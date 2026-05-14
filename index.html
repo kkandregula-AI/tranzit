@@ -652,6 +652,20 @@ function TranzitApp(){
   const [activeTab, setActiveTab] = useState("plan");
   const [selRoute,  setSelRoute]  = useState(0);
   const [sosActive, setSosActive] = useState(false);
+  const [sosModal,  setSosModal]  = useState(false);  // setup/confirm modal
+  const [sosPhase,  setSosPhase]  = useState("idle"); // idle | countdown | sent
+  const [sosCountdown, setSosCountdown] = useState(5);
+  const sosTimerRef = useRef(null);
+
+  // SOS settings (persisted in localStorage)
+  const SOS_STORAGE = "tranzit_sos_settings";
+  const loadSosSettings = () => { try { return JSON.parse(localStorage.getItem(SOS_STORAGE)||"{}"); } catch { return {}; } };
+  const [sosSettings, setSosSettings] = useState(loadSosSettings);
+  const [sosSetupOpen, setSosSetupOpen] = useState(false);
+
+  const saveSosSettings = (s) => { setSosSettings(s); localStorage.setItem(SOS_STORAGE, JSON.stringify(s)); };
+
+  useEffect(() => () => clearInterval(sosTimerRef.current), []);
   const [cityModal, setCityModal] = useState(false);
   const [addCityOpen,setAddCityOpen]=useState(false);
   const [time,      setTime]      = useState(new Date());
@@ -687,7 +701,88 @@ function TranzitApp(){
   const fmtFare   =v=>(typeof v==="number"&&v%1!==0)?v.toFixed(2):String(Math.round(v));
   const swap      =()=>{const t=from;setFrom(to);setTo(t);setRoutes([]);setSearched(false);};
 
-  const handleFindRoutes=()=>{
+  // ── SOS HELPERS (need city to be defined first) ──────────────────────────
+  const SOS_EMERGENCY = {
+    "India":"112","United Kingdom":"999","United States":"911","Australia":"000",
+    "Japan":"110","China":"110","Germany":"112","France":"15","UAE":"999",
+    "Singapore":"999","Canada":"911","Brazil":"190","South Africa":"10111",
+    "Nigeria":"199","Kenya":"999","Thailand":"191","Indonesia":"112",
+    "Malaysia":"999","Philippines":"911","South Korea":"112","Pakistan":"15",
+    "Bangladesh":"999","Sri Lanka":"119","Nepal":"100","Mexico":"911",
+    "Argentina":"911","Colombia":"123","Egypt":"123","Morocco":"19",
+    "Saudi Arabia":"911","Turkey":"112","Iran":"115","Italy":"112",
+    "Spain":"112","Netherlands":"112","Sweden":"112","Norway":"112",
+    "Poland":"112","Russia":"112","Vietnam":"113","New Zealand":"111",
+    "Portugal":"112","Greece":"112","Switzerland":"117","Belgium":"112",
+  };
+  const cityEmergency = SOS_EMERGENCY[city.country] || "112";
+
+  const buildSosMsg = (coords) => {
+    const def = `🆘 EMERGENCY SOS from Tranzit\nI need help urgently!\n📍 Location: https://maps.google.com/?q=${coords.lat},${coords.lng}\n🌐 City: ${city.name}, ${city.country}\n⏰ Time: ${new Date().toLocaleString()}\nPlease contact emergency services: ${cityEmergency}`;
+    return sosSettings.customMsg
+      ? `${sosSettings.customMsg}\n\n📍 Location: https://maps.google.com/?q=${coords.lat},${coords.lng}\n⏰ ${new Date().toLocaleString()}`
+      : def;
+  };
+
+  const getLocation = () => new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve({lat:"unknown",lng:"unknown"}); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({lat: p.coords.latitude.toFixed(6), lng: p.coords.longitude.toFixed(6)}),
+      () => resolve({lat:"unknown",lng:"unknown"}),
+      {timeout:6000, enableHighAccuracy:true}
+    );
+  });
+
+  const sendSOS = async () => {
+    const coords = await getLocation();
+    const msg    = buildSosMsg(coords);
+    const phones = (sosSettings.contacts||[]).filter(c=>c&&c.phone);
+
+    if (phones.length === 0) {
+      window.location.href = `tel:${cityEmergency}`;
+      setSosPhase("sent"); setSosActive(true);
+      return;
+    }
+
+    // WhatsApp to first contact
+    const primary = phones[0].phone.replace(/\D/g,"");
+    window.open(`https://wa.me/${primary}?text=${encodeURIComponent(msg)}`, "_blank");
+
+    // SMS to all contacts (staggered)
+    phones.forEach((c, i) => {
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = `sms:${c.phone.replace(/\D/g,"")}?body=${encodeURIComponent(msg)}`;
+        a.click();
+      }, (i+1)*1400);
+    });
+
+    setSosPhase("sent"); setSosActive(true);
+  };
+
+  const startSosCountdown = () => {
+    if (!(sosSettings.contacts||[]).filter(c=>c&&c.phone).length) {
+      setSosSetupOpen(true); return;
+    }
+    setSosModal(true); setSosPhase("countdown"); setSosCountdown(5);
+    let n = 5;
+    sosTimerRef.current = setInterval(() => {
+      n--;
+      setSosCountdown(n);
+      if (n <= 0) {
+        clearInterval(sosTimerRef.current);
+        setSosModal(false);
+        sendSOS();
+      }
+    }, 1000);
+  };
+
+  const cancelSosCountdown = () => {
+    clearInterval(sosTimerRef.current);
+    setSosModal(false); setSosPhase("idle"); setSosCountdown(5);
+  };
+
+  const handleFindRoutes = () => {
     if(!from.trim()||!to.trim()) return;
     if(!apiKey){setShowKeyPanel(true);setEditingKey(false);return;}
     doFetch();
@@ -833,12 +928,126 @@ function TranzitApp(){
         </div>
       )}
 
-      {/* ═══ SOS ═══ */}
-      {sosActive&&(
-        <div style={{margin:"10px 14px 0",background:"rgba(255,68,102,0.11)",border:"1px solid rgba(255,68,102,0.4)",borderRadius:11,padding:"10px 13px",display:"flex",alignItems:"center",gap:9,animation:"fadeIn 0.3s ease"}}>
-          <span style={{fontSize:17}}>🆘</span>
-          <div><div style={{fontWeight:700,color:C.crimson,fontSize:11}}>SOS ACTIVATED</div><div style={{fontSize:10,color:C.textDim}}>Location shared · Contacts & emergency services notified</div></div>
-          <button onClick={()=>setSosActive(false)} style={{marginLeft:"auto",background:"rgba(255,68,102,0.14)",border:"1px solid rgba(255,68,102,0.4)",color:C.crimson,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10}}>CANCEL</button>
+      {/* ═══ SOS SETUP MODAL ═══ */}
+      {sosSetupOpen && (
+        <div onClick={()=>setSosSetupOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
+          <div onClick={e=>e.stopPropagation()} className="modal-sheet" style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:"1px solid rgba(255,68,102,0.3)",padding:"20px 16px 36px",maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{textAlign:"center",marginBottom:18}}>
+              <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 12px"}}/>
+              <div style={{fontSize:28,marginBottom:6}}>🆘</div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:C.crimson}}>SOS SETUP</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:2}}>Configure emergency contacts · Saved to your device</div>
+            </div>
+
+            {/* Emergency number for city */}
+            <div style={{background:"rgba(255,68,102,0.08)",border:"1px solid rgba(255,68,102,0.25)",borderRadius:11,padding:"10px 13px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:18}}>📞</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:C.muted,letterSpacing:"0.08em"}}>LOCAL EMERGENCY NUMBER</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:18,fontWeight:700,color:C.crimson}}>{cityEmergency}</div>
+                <div style={{fontSize:10,color:C.muted}}>{city.name}, {city.country}</div>
+              </div>
+              <button onClick={()=>window.location.href=`tel:${cityEmergency}`} style={{background:"rgba(255,68,102,0.15)",border:"1px solid rgba(255,68,102,0.4)",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:C.crimson,fontSize:11,fontWeight:600}}>CALL NOW</button>
+            </div>
+
+            {/* Contacts */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>👤 EMERGENCY CONTACTS (up to 3)</div>
+              {[0,1,2].map(i => {
+                const c = sosSettings.contacts?.[i] || {};
+                return (
+                  <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 13px",marginBottom:9}}>
+                    <div style={{fontSize:10,color:C.muted,marginBottom:8}}>Contact {i+1} {i===0?"(Primary)":""}</div>
+                    <input
+                      placeholder="Name e.g. Ravi, Mom, Partner"
+                      value={c.name||""}
+                      onChange={e=>{
+                        const updated=[...(sosSettings.contacts||[[],[],[]])];
+                        if(!updated[i]) updated[i]={};
+                        updated[i]={...updated[i],name:e.target.value};
+                        saveSosSettings({...sosSettings,contacts:updated});
+                      }}
+                      style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",marginBottom:7,boxSizing:"border-box"}}/>
+                    <input
+                      placeholder="Phone with country code e.g. +919876543210"
+                      value={c.phone||""}
+                      onChange={e=>{
+                        const updated=[...(sosSettings.contacts||[[],[],[]])];
+                        if(!updated[i]) updated[i]={};
+                        updated[i]={...updated[i],phone:e.target.value};
+                        saveSosSettings({...sosSettings,contacts:updated});
+                      }}
+                      style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Custom message */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>💬 CUSTOM SOS MESSAGE (optional)</div>
+              <textarea
+                rows={3}
+                placeholder={`Default: "🆘 EMERGENCY SOS — I need help! My location: [GPS link]"`}
+                value={sosSettings.customMsg||""}
+                onChange={e=>saveSosSettings({...sosSettings,customMsg:e.target.value})}
+                style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${C.border}`,borderRadius:9,padding:"9px 11px",color:C.text,fontSize:12,outline:"none",resize:"none",boxSizing:"border-box",lineHeight:1.6}}/>
+              <div style={{fontSize:10,color:C.muted,marginTop:5}}>📍 Your live GPS coordinates are always appended automatically.</div>
+            </div>
+
+            {/* What happens on SOS */}
+            <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 13px",marginBottom:16}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.08em",marginBottom:7}}>⚡ WHAT HAPPENS WHEN YOU TAP SOS</div>
+              {["5-second countdown (tap again to cancel)","GPS location captured automatically","WhatsApp message sent to Contact 1","SMS sent to all saved contacts","Emergency number shown for quick dial"].map((s,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:7,marginBottom:5,fontSize:11,color:C.textDim}}>
+                  <span style={{color:C.crimson,fontSize:9}}>●</span>{s}
+                </div>
+              ))}
+            </div>
+
+            <button onClick={()=>setSosSetupOpen(false)} style={{width:"100%",background:"linear-gradient(135deg,#FF4466,#CC0033)",border:"none",borderRadius:12,padding:"13px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#fff",boxShadow:"0 4px 16px rgba(255,68,102,0.4)"}}>
+              ✓ Save SOS Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ SOS COUNTDOWN MODAL ═══ */}
+      {sosModal && sosPhase==="countdown" && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+          <div style={{textAlign:"center",padding:"0 32px",animation:"fadeIn 0.2s ease"}}>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:88,color:C.crimson,lineHeight:1,animation:"pulse 1s infinite"}}>{sosCountdown}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:"#fff",letterSpacing:"0.1em",marginBottom:8}}>SENDING SOS</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:6}}>WhatsApp + SMS to your emergency contacts</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:32}}>
+              {(sosSettings.contacts||[]).filter(c=>c.phone).map(c=>c.name||c.phone).join(" · ")}
+            </div>
+            <button onClick={cancelSosCountdown} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:14,padding:"13px 40px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#fff",letterSpacing:"0.05em"}}>
+              ✕ CANCEL
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ SOS SENT BANNER ═══ */}
+      {sosActive && sosPhase==="sent" && (
+        <div style={{margin:"10px 14px 0",background:"rgba(255,68,102,0.13)",border:"1px solid rgba(255,68,102,0.45)",borderRadius:11,padding:"11px 13px",animation:"fadeIn 0.3s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:6}}>
+            <span style={{fontSize:18}}>🆘</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,color:C.crimson,fontSize:12}}>SOS SENT</div>
+              <div style={{fontSize:10,color:C.textDim}}>WhatsApp + SMS dispatched with your GPS location</div>
+            </div>
+            <button onClick={()=>{setSosActive(false);setSosPhase("idle");}} style={{background:"rgba(255,68,102,0.15)",border:"1px solid rgba(255,68,102,0.4)",color:C.crimson,borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:10}}>✕</button>
+          </div>
+          <div style={{display:"flex",gap:7}}>
+            <button onClick={()=>window.location.href=`tel:${cityEmergency}`} style={{flex:1,background:"linear-gradient(135deg,#FF4466,#CC0033)",border:"none",borderRadius:9,padding:"8px",cursor:"pointer",fontWeight:700,fontSize:12,color:"#fff"}}>
+              📞 Call {cityEmergency}
+            </button>
+            <button onClick={()=>setSosSetupOpen(true)} style={{flex:"0 0 auto",background:"transparent",border:"1px solid rgba(255,68,102,0.4)",borderRadius:9,padding:"8px 12px",cursor:"pointer",color:C.crimson,fontSize:11}}>
+              ⚙️ Edit
+            </button>
+          </div>
         </div>
       )}
 
@@ -1022,7 +1231,25 @@ function TranzitApp(){
 
         {/* SOS + Find Routes buttons */}
         <div style={{display:"flex",gap:8,padding:"0 14px 8px"}}>
-          <button onClick={()=>setSosActive(!sosActive)} style={{flex:"0 0 auto",background:sosActive?`linear-gradient(135deg,${C.crimson},#aa0022)`:"rgba(255,68,102,0.11)",border:`1px solid ${C.crimson}`,color:C.crimson,borderRadius:12,padding:"10px 14px",cursor:"pointer",fontWeight:700,fontSize:12,boxShadow:sosActive?`0 0 16px rgba(255,68,102,0.45)`:"none",transition:"all 0.25s"}}>🆘 SOS</button>
+          <div style={{display:"flex",gap:0,flex:"0 0 auto"}}>
+            <button onClick={startSosCountdown} style={{
+              background:sosPhase==="sent"?`linear-gradient(135deg,${C.crimson},#aa0022)`:"rgba(255,68,102,0.13)",
+              border:`1px solid ${C.crimson}`,color:C.crimson,
+              borderRadius:"12px 0 0 12px",padding:"10px 13px",
+              cursor:"pointer",fontWeight:700,fontSize:12,
+              boxShadow:sosPhase==="sent"?`0 0 18px rgba(255,68,102,0.5)`:"none",
+              transition:"all 0.25s"}}>
+              🆘 SOS
+            </button>
+            <button onClick={()=>setSosSetupOpen(true)} style={{
+              background:"rgba(255,68,102,0.08)",
+              border:`1px solid ${C.crimson}`,borderLeft:"none",
+              color:C.crimson,borderRadius:"0 12px 12px 0",
+              padding:"10px 9px",cursor:"pointer",fontSize:12,
+              transition:"all 0.2s"}} title="SOS Settings">
+              ⚙️
+            </button>
+          </div>
           <button onClick={()=>activeTab==="plan"?handleFindRoutes():null}
             disabled={activeTab==="plan"&&(loading||!from.trim()||!to.trim())}
             style={{flex:1,
