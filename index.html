@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Tranzit — Global Commute Intelligence</title>
+  <meta name="description" content="AI-powered multi-modal transit routing for cities worldwide"/>
+  <meta name="theme-color" content="#FF6B1A"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:#0A0A0F;color:#E8E8F0}
+    body{font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased}
+    ::-webkit-scrollbar{display:none}
+    *{-ms-overflow-style:none;scrollbar-width:none}
+    input,button,select,textarea{font-family:'DM Sans',sans-serif}
+    input::placeholder,textarea::placeholder{color:#6B7A99}
+    select option{background:#1A1A28;color:#E8E8F0}
+    @keyframes pulse   {0%,100%{opacity:1}      50%{opacity:.4}}
+    @keyframes shimmer {0%,100%{opacity:.7}      50%{opacity:.3}}
+    @keyframes fadeIn  {from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideUp {from{transform:translateY(100%)}to{transform:translateY(0)}}
+    @keyframes spin    {to{transform:rotate(360deg)}}
+    @keyframes glow    {0%,100%{box-shadow:0 0 8px rgba(255,107,26,.3)}50%{box-shadow:0 0 22px rgba(255,107,26,.7)}}
+    .route-card {animation:fadeIn .35s ease forwards}
+    .modal-sheet{animation:slideUp .35s cubic-bezier(.32,.72,0,1) forwards}
+    .spin{animation:spin 1s linear infinite;display:inline-block}
+    .glow{animation:glow 2s ease-in-out infinite}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef} = React;
+
+const API_KEY_STORAGE    = "tranzit_api_key";
+const CUSTOM_CITY_STORAGE= "tranzit_custom_cities";
+
+// ── WORLD CITY DIRECTORY (country → cities) ───────────────────────────────────
+const WORLD_CITIES = {
+  "India":         ["Ahmedabad","Bengaluru","Bhopal","Chennai","Delhi","Goa","Guwahati","Hyderabad","Jaipur","Kochi","Kolkata","Lucknow","Mumbai","Nagpur","Patna","Pune","Surat","Visakhapatnam"],
+  "United Kingdom":["Birmingham","Bristol","Edinburgh","Glasgow","Leeds","Liverpool","London","Manchester","Newcastle","Nottingham","Sheffield"],
+  "United States": ["Atlanta","Austin","Boston","Chicago","Dallas","Denver","Houston","Las Vegas","Los Angeles","Miami","Minneapolis","Nashville","New York","Philadelphia","Phoenix","Portland","San Francisco","Seattle","Washington DC"],
+  "Australia":     ["Adelaide","Brisbane","Canberra","Darwin","Gold Coast","Melbourne","Perth","Sydney"],
+  "Japan":         ["Fukuoka","Hiroshima","Kobe","Kyoto","Nagoya","Osaka","Sapporo","Tokyo","Yokohama"],
+  "China":         ["Beijing","Chengdu","Guangzhou","Hangzhou","Nanjing","Shanghai","Shenzhen","Wuhan","Xi'an"],
+  "Germany":       ["Berlin","Bremen","Cologne","Dortmund","Düsseldorf","Frankfurt","Hamburg","Munich","Stuttgart"],
+  "France":        ["Bordeaux","Lille","Lyon","Marseille","Nantes","Nice","Paris","Rennes","Strasbourg","Toulouse"],
+  "UAE":           ["Abu Dhabi","Ajman","Dubai","Sharjah"],
+  "Singapore":     ["Singapore"],
+  "Canada":        ["Calgary","Edmonton","Montreal","Ottawa","Quebec City","Toronto","Vancouver","Winnipeg"],
+  "Brazil":        ["Belo Horizonte","Brasília","Curitiba","Fortaleza","Manaus","Porto Alegre","Recife","Rio de Janeiro","Salvador","São Paulo"],
+  "South Africa":  ["Cape Town","Durban","Johannesburg","Pretoria"],
+  "Nigeria":       ["Abuja","Ibadan","Kano","Lagos"],
+  "Kenya":         ["Kisumu","Mombasa","Nairobi"],
+  "Thailand":      ["Bangkok","Chiang Mai","Pattaya","Phuket"],
+  "Indonesia":     ["Bali","Bandung","Jakarta","Makassar","Medan","Surabaya"],
+  "Malaysia":      ["George Town","Ipoh","Johor Bahru","Kota Kinabalu","Kuala Lumpur","Penang"],
+  "Philippines":   ["Cebu City","Davao","Manila","Quezon City"],
+  "South Korea":   ["Busan","Daegu","Gwangju","Incheon","Seoul"],
+  "Pakistan":      ["Islamabad","Karachi","Lahore","Peshawar","Rawalpindi"],
+  "Bangladesh":    ["Chittagong","Dhaka","Sylhet"],
+  "Sri Lanka":     ["Colombo","Kandy"],
+  "Nepal":         ["Kathmandu","Pokhara"],
+  "Mexico":        ["Guadalajara","Mexico City","Monterrey","Puebla","Tijuana"],
+  "Argentina":     ["Buenos Aires","Córdoba","Mendoza","Rosario"],
+  "Colombia":      ["Barranquilla","Bogotá","Cali","Medellín"],
+  "Egypt":         ["Alexandria","Cairo","Giza"],
+  "Morocco":       ["Casablanca","Marrakech","Rabat","Tangier"],
+  "Ethiopia":      ["Addis Ababa","Dire Dawa"],
+  "Saudi Arabia":  ["Jeddah","Mecca","Medina","Riyadh"],
+  "Turkey":        ["Ankara","Antalya","Bursa","Istanbul","Izmir"],
+  "Iran":          ["Isfahan","Mashhad","Shiraz","Tehran"],
+  "Italy":         ["Bologna","Florence","Milan","Naples","Palermo","Rome","Turin","Venice"],
+  "Spain":         ["Barcelona","Bilbao","Madrid","Málaga","Seville","Valencia"],
+  "Netherlands":   ["Amsterdam","Eindhoven","Rotterdam","The Hague","Utrecht"],
+  "Sweden":        ["Gothenburg","Malmö","Stockholm","Uppsala"],
+  "Norway":        ["Bergen","Oslo","Stavanger","Trondheim"],
+  "Poland":        ["Kraków","Łódź","Poznań","Warsaw","Wrocław"],
+  "Russia":        ["Kazan","Moscow","Novosibirsk","Saint Petersburg","Yekaterinburg"],
+  "Vietnam":       ["Da Nang","Hanoi","Ho Chi Minh City"],
+  "New Zealand":   ["Auckland","Christchurch","Wellington"],
+  "Portugal":      ["Lisbon","Porto"],
+  "Greece":        ["Athens","Thessaloniki"],
+  "Switzerland":   ["Basel","Bern","Geneva","Zurich"],
+  "Belgium":       ["Antwerp","Brussels","Ghent","Liège"],
+  "Argentina":     ["Buenos Aires","Córdoba","Mendoza","Rosario"],
+  "Chile":         ["Santiago","Valparaíso","Concepción"],
+  "Peru":          ["Arequipa","Lima","Cusco"],
+  "Ghana":         ["Accra","Kumasi"],
+  "Tanzania":      ["Dar es Salaam","Dodoma"],
+};
+
+const COUNTRY_ACCENTS = {
+  "India":"#FF6B1A","United Kingdom":"#E40000","United States":"#0039A6",
+  "Australia":"#00843D","Japan":"#BC002D","China":"#DE2910","Germany":"#FFCC00",
+  "France":"#003399","UAE":"#C79A00","Singapore":"#CC0001","Canada":"#D80000",
+  "Brazil":"#009C3B","South Africa":"#007A4D","Nigeria":"#008751","Kenya":"#006600",
+  "Thailand":"#A51931","Indonesia":"#CE1126","Malaysia":"#CC0001","Philippines":"#0038A8",
+  "South Korea":"#003478","Pakistan":"#01411C","Bangladesh":"#006A4E","Sri Lanka":"#8D153A",
+  "Nepal":"#003893","Mexico":"#006847","Argentina":"#74ACDF","Colombia":"#FCD116",
+  "Egypt":"#CE1126","Morocco":"#C1272D","Ethiopia":"#078930","Saudi Arabia":"#006C35",
+  "Turkey":"#E30A17","Iran":"#239F40","Italy":"#009246","Spain":"#AA151B",
+  "Netherlands":"#AE1C28","Sweden":"#006AA7","Norway":"#EF2B2D","Poland":"#DC143C",
+  "Russia":"#0032A0","Vietnam":"#DA251D","New Zealand":"#00247D","Portugal":"#006600",
+  "Greece":"#0D5EAF","Switzerland":"#FF0000","Belgium":"#FAE042","Chile":"#D52B1E",
+  "Peru":"#D91023","Ghana":"#006B3F","Tanzania":"#1EB53A",
+};
+
+const COUNTRY_FLAGS = {
+  "India":"🇮🇳","United Kingdom":"🇬🇧","United States":"🇺🇸","Australia":"🇦🇺",
+  "Japan":"🇯🇵","China":"🇨🇳","Germany":"🇩🇪","France":"🇫🇷","UAE":"🇦🇪",
+  "Singapore":"🇸🇬","Canada":"🇨🇦","Brazil":"🇧🇷","South Africa":"🇿🇦",
+  "Nigeria":"🇳🇬","Kenya":"🇰🇪","Thailand":"🇹🇭","Indonesia":"🇮🇩","Malaysia":"🇲🇾",
+  "Philippines":"🇵🇭","South Korea":"🇰🇷","Pakistan":"🇵🇰","Bangladesh":"🇧🇩",
+  "Sri Lanka":"🇱🇰","Nepal":"🇳🇵","Mexico":"🇲🇽","Argentina":"🇦🇷","Colombia":"🇨🇴",
+  "Egypt":"🇪🇬","Morocco":"🇲🇦","Ethiopia":"🇪🇹","Saudi Arabia":"🇸🇦","Turkey":"🇹🇷",
+  "Iran":"🇮🇷","Italy":"🇮🇹","Spain":"🇪🇸","Netherlands":"🇳🇱","Sweden":"🇸🇪",
+  "Norway":"🇳🇴","Poland":"🇵🇱","Russia":"🇷🇺","Vietnam":"🇻🇳","New Zealand":"🇳🇿",
+  "Portugal":"🇵🇹","Greece":"🇬🇷","Switzerland":"🇨🇭","Belgium":"🇧🇪","Chile":"🇨🇱",
+  "Peru":"🇵🇪","Ghana":"🇬🇭","Tanzania":"🇹🇿",
+};
+
+// ── BUILT-IN CITY DB ──────────────────────────────────────────────────────────
+const BUILTIN_CITIES = {
+  hyderabad:{name:"Hyderabad",country:"India",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8}],stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],alerts:[{type:"warn",msg:"Metro Blue Line delayed 8 min — signal fault near Ameerpet"},{type:"info",msg:"TSRTC 216K running on alternate route via Banjara Hills"},{type:"safe",msg:"Safe Zone active: Women's coach M3 verified occupied"},{type:"crowd",msg:"Secunderabad platform 3 crowd HIGH — suggest M2 coach"}],budget:[58,95,40,78,112,35,0],monthlyBudget:2400},
+  mumbai:{name:"Mumbai",country:"India",flag:"🇮🇳",currency:"₹",code:"BOM",accent:"#0066CC",accentB:"#00AAFF",timezone:"IST",transitLabel:"Mumbai Local & Metro",defaultFrom:"Andheri",defaultTo:"Churchgate",popularRoutes:[["Andheri","Churchgate"],["Bandra","CST"],["Borivali","Dadar"],["Kurla","Thane"]],lines:[{line:"Western",route:"Churchgate ↔ Dahanu Road",status:"On Time",trains:22},{line:"Central",route:"CST ↔ Kasara / Panvel",status:"Delayed",trains:20},{line:"Harbour",route:"CST ↔ Panvel",status:"On Time",trains:14}],stations:[{stn:"Dadar",pct:96,dir:"Western + Central interchange"},{stn:"Andheri",pct:84,dir:"Western Line"},{stn:"Kurla",pct:79,dir:"Central + Metro interchange"},{stn:"Bandra",pct:61,dir:"Western Line"}],alerts:[{type:"warn",msg:"Central Line delayed 12 min — track maintenance near Thane"},{type:"info",msg:"AC Local on platform 7 instead of 4 — Churchgate"},{type:"safe",msg:"Women's special 7:45 AM fast from Borivali platform 2"},{type:"crowd",msg:"Dadar station crowd RED — use foot overbridge exit 3"}],budget:[30,62,30,45,88,30,0],monthlyBudget:1800},
+  delhi:{name:"Delhi",country:"India",flag:"🇮🇳",currency:"₹",code:"DEL",accent:"#8B0000",accentB:"#CC3300",timezone:"IST",transitLabel:"Delhi Metro (DMRC)",defaultFrom:"Dwarka Sec 21",defaultTo:"Connaught Place",popularRoutes:[["Dwarka Sec 21","Connaught Place"],["Noida Sec 18","Rajiv Chowk"],["Gurgaon","Hauz Khas"],["Rohini","Chandni Chowk"]],lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12}],stations:[{stn:"Rajiv Chowk",pct:93,dir:"Yellow + Blue interchange"},{stn:"Kashmere Gate",pct:77,dir:"Red + Yellow + Violet"},{stn:"Hauz Khas",pct:55,dir:"Yellow + Magenta interchange"},{stn:"Noida Sector 18",pct:62,dir:"Blue Line terminus area"}],alerts:[{type:"warn",msg:"Red Line delay 15 min — Kashmere Gate to Dilshad Garden"},{type:"info",msg:"AQI 187 (Moderate) — Metro recommended over outdoor options"},{type:"safe",msg:"Pink coach active on all Yellow Line trains till 9 PM"},{type:"crowd",msg:"Rajiv Chowk gate 7 queue 20 min — use gate 2 instead"}],budget:[70,50,95,50,140,50,0],monthlyBudget:2200},
+  london:{name:"London",country:"United Kingdom",flag:"🇬🇧",currency:"£",code:"LON",accent:"#E40000",accentB:"#FF6666",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],lines:[{line:"Central",route:"West Ruislip ↔ Epping",status:"On Time",trains:16},{line:"Elizabeth",route:"Reading ↔ Shenfield / Abbey",status:"On Time",trains:14},{line:"Northern",route:"Morden ↔ Edgware / Mill Hill",status:"Delayed",trains:18}],stations:[{stn:"King's Cross",pct:82,dir:"6 lines interchange"},{stn:"Bank/Monument",pct:75,dir:"Central + Waterloo + City"},{stn:"Paddington",pct:58,dir:"Elizabeth + Bakerloo + Circle"},{stn:"Liverpool St",pct:69,dir:"Central + Elizabeth + Overground"}],alerts:[{type:"warn",msg:"Northern Line severe delays — signal failure at Camden Town"},{type:"info",msg:"Elizabeth Line running 4 extra trains/hr during rush hour"},{type:"safe",msg:"Night Tube active Fri–Sat: Central, Jubilee, Northern, Victoria"},{type:"crowd",msg:"King's Cross gateline queues 15 min — use York Way entrance"}],budget:[8.2,12.5,6.8,14.0,18.5,4.2,0],monthlyBudget:180},
+  singapore:{name:"Singapore",country:"Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#CC0001",accentB:"#FF4444",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10}],stations:[{stn:"City Hall",pct:78,dir:"NS + EW interchange"},{stn:"Raffles Place",pct:84,dir:"NS + EW CBD core"},{stn:"Dhoby Ghaut",pct:61,dir:"NS + NE + Circle"},{stn:"Jurong East",pct:55,dir:"NS + EW + 2 malls"}],alerts:[{type:"warn",msg:"Circle Line reduced frequency — train fault at Promenade"},{type:"info",msg:"Bus 65 express service added on weekday peak from Tampines"},{type:"safe",msg:"SMRT staff at Raffles Place for crowd management 8–9 AM"},{type:"crowd",msg:"City Hall exit C crowded — use Raffles City mall exit"}],budget:[5.2,8.0,4.5,6.8,14.0,3.2,0],monthlyBudget:120},
+  dubai:{name:"Dubai",country:"UAE",flag:"🇦🇪",currency:"AED",code:"DXB",accent:"#C79A00",accentB:"#FFD700",timezone:"GST",transitLabel:"RTA Dubai Metro",defaultFrom:"DMCC (JLT)",defaultTo:"Dubai Airport T3",popularRoutes:[["DMCC (JLT)","Dubai Airport T3"],["Dubai Marina","Mall of the Emirates"],["Deira City Centre","BurJuman"],["Union","Dubai Mall / Burj Khalifa"]],lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6}],stations:[{stn:"Union",pct:72,dir:"Red + Green interchange"},{stn:"DMCC",pct:65,dir:"JLT / Marina area"},{stn:"Dubai Mall",pct:88,dir:"Near Burj Khalifa"},{stn:"Airport T3",pct:55,dir:"DXB Terminal 3"}],alerts:[{type:"info",msg:"Gold class carriages available on all Red Line — AED 20 upgrade"},{type:"warn",msg:"Dubai Mall station crowded during sale season — allow 15 min extra"},{type:"safe",msg:"Women & children carriage at front of every train — enforced"},{type:"info",msg:"Nol card top-up at all metro stations and LuLu Hypermarkets"}],budget:[15,25,12,35,18,8,0],monthlyBudget:400},
+  newyork:{name:"New York",country:"United States",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#0039A6",accentB:"#FF6319",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10}],stations:[{stn:"Times Sq–42 St",pct:91,dir:"Busiest station globally"},{stn:"Grand Central",pct:83,dir:"4/5/6/7 + Metro-North"},{stn:"Union Square",pct:74,dir:"4/5/6/N/Q/R/W/L"},{stn:"Atlantic Ave",pct:66,dir:"Brooklyn interchange hub"}],alerts:[{type:"warn",msg:"4 train running express — skipping 51st, 68th, 77th St"},{type:"info",msg:"OMNY contactless accepted on all buses and subways"},{type:"crowd",msg:"Times Square gridlock — use 42nd St Bryant Park as alternate"},{type:"info",msg:"L train weekend suspended Canarsie–Jefferson: Q shuttle active"}],budget:[7.8,11.5,8.0,22.0,14.5,5.8,0],monthlyBudget:200},
+  tokyo:{name:"Tokyo",country:"Japan",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#BC002D",accentB:"#FF6B81",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],lines:[{line:"Ginza",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14},{line:"Yamanote",route:"Loop (30 stations)",status:"On Time",trains:20},{line:"Chuo",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16}],stations:[{stn:"Shinjuku",pct:96,dir:"World's busiest station"},{stn:"Shibuya",pct:88,dir:"Multiple lines + Scramble"},{stn:"Tokyo",pct:77,dir:"Shinkansen + Yamanote hub"},{stn:"Ikebukuro",pct:80,dir:"Yamanote + Fukutoshin"}],alerts:[{type:"warn",msg:"Chuo Line 4 min late — door malfunction at Koenji"},{type:"info",msg:"Suica/Pasmo IC card required — no cash on Tokyo Metro"},{type:"safe",msg:"Women-only carriages active 7–9 AM and 5–9 PM on all Metro"},{type:"crowd",msg:"Shinjuku South Exit — avoid 8:10–8:40 during peak surge"}],budget:[540,680,400,820,1200,300,0],monthlyBudget:15000},
+  sydney:{name:"Sydney",country:"Australia",flag:"🇦🇺",currency:"A$",code:"SYD",accent:"#00843D",accentB:"#FFD700",timezone:"AEST",transitLabel:"Transport for NSW",defaultFrom:"Bondi Junction",defaultTo:"Wynyard (CBD)",popularRoutes:[["Bondi Junction","Wynyard (CBD)"],["Parramatta","Central"],["Chatswood","Circular Quay"],["Liverpool","Town Hall"]],lines:[{line:"T1 North Shore",route:"Central ↔ Berowra / Richmond",status:"On Time",trains:10},{line:"T4 Eastern Sub",route:"Bondi Jn ↔ Waterfall",status:"Delayed",trains:8},{line:"L2/L3 Kingsford",route:"Circular Quay ↔ Randwick",status:"On Time",trains:6}],stations:[{stn:"Central",pct:79,dir:"All lines + intercity"},{stn:"Town Hall",pct:72,dir:"T1/T2/T3/T4/T8"},{stn:"Wynyard",pct:65,dir:"T1/T2/T3 + Buses"},{stn:"Circular Quay",pct:58,dir:"Trains + Ferries + Light Rail"}],alerts:[{type:"warn",msg:"T4 Eastern Suburbs delays — track work Bondi Junction to Museum"},{type:"info",msg:"Opal card tap on/off required — daily cap A$16.80 weekdays"},{type:"safe",msg:"Transport officers at Central 7:30–9 AM for passenger safety"},{type:"info",msg:"Ferry F1 Manly — extra service Fri 5:30 PM from Circular Quay"}],budget:[8,14,7,22,12,5,0],monthlyBudget:250},
+};
+
+const DAYS=["M","T","W","T","F","S","S"];
+const crowdColor=p=>p>85?"#FF4466":p>65?"#F5A623":"#00D4AA";
+const alertIcon =t=>({warn:"⚠️",info:"ℹ️",safe:"🛡️",crowd:"👥"}[t]);
+const statusClr =s=>s==="On Time"?"#00D4AA":"#FF4466";
+const maskKey   =k=>k?`${k.slice(0,8)}${"•".repeat(12)}${k.slice(-4)}`:"";
+const slugify   =s=>s.toLowerCase().replace(/[^a-z0-9]/g,"_");
+
+const C={bg:"#0A0A0F",surface:"#12121A",surface2:"#16161F",border:"rgba(255,255,255,0.08)",text:"#E8E8F0",muted:"#6B7A99",textDim:"#8890AA",emerald:"#00D4AA",crimson:"#FF4466",sky:"#4FC3F7"};
+
+const selStyle=(acc)=>({
+  width:"100%",background:C.surface2,border:`1px solid ${acc}55`,
+  borderRadius:10,padding:"10px 12px",color:C.text,fontSize:13,
+  outline:"none",appearance:"none",WebkitAppearance:"none",
+  backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7A99' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+  backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",
+  paddingRight:32,cursor:"pointer",
+});
+
+// ── TOKEN TRACKING ────────────────────────────────────────────────────────────
+// Session-level in-memory cache: key → {routes, tokens}
+const SESSION_ROUTE_CACHE = new Map();
+// Shared mutable token counters for this session (updated by API fns)
+const TOKEN_SESSION = { used: 0, saved: 0, cityUsed: 0 };
+
+function cacheKey(cityCode, from, to) {
+  return `${cityCode}|${from.trim().toLowerCase()}|${to.trim().toLowerCase()}`;
+}
+
+// ── AI ROUTE FETCH (with cache + token tracking) ──────────────────────────────
+async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate) {
+  const key = cacheKey(city.code, from, to);
+
+  // Cache HIT → return instantly, credit saved tokens
+  if (SESSION_ROUTE_CACHE.has(key)) {
+    const cached = SESSION_ROUTE_CACHE.get(key);
+    TOKEN_SESSION.saved += cached.tokens;
+    onTokenUpdate && onTokenUpdate({ ...TOKEN_SESSION });
+    return { routes: cached.routes, fromCache: true, tokensSaved: cached.tokens };
+  }
+
+  // Compressed prompt (saves ~30% input tokens vs verbose version)
+  const prompt = `Transit expert: ${city.name}, ${city.country}. System: ${city.transitLabel}. Currency: ${city.currency}.
+5 routes from "${from}" to "${to}". Raw JSON array only, no markdown.
+Each: {"id":"str","icon":"emoji","label":"name","via":"real stops","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"insight"}
+Use real names. Include local modes (auto/tram/ferry if applicable).`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:900, messages:[{role:"user",content:prompt}] })
+  });
+  if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(res.status===401?"AUTH_FAILED":e.error?.message||`HTTP ${res.status}`); }
+  const data = await res.json();
+  const tokensUsed = (data.usage?.input_tokens||180) + (data.usage?.output_tokens||520);
+  TOKEN_SESSION.used += tokensUsed;
+
+  const routes = JSON.parse(data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim());
+
+  // Store in session cache
+  SESSION_ROUTE_CACHE.set(key, { routes, tokens: tokensUsed });
+  onTokenUpdate && onTokenUpdate({ ...TOKEN_SESSION });
+  return { routes, fromCache: false, tokensUsed };
+}
+
+// ── AI CITY CONFIG GENERATOR ───────────────────────────────────────────────────
+async function generateCityConfig(cityName,country,apiKey){
+  const accent = COUNTRY_ACCENTS[country]||"#4FC3F7";
+  const flag   = COUNTRY_FLAGS[country]||"🌍";
+
+  const prompt=`You are a transit data expert. Generate a complete city transit configuration for "${cityName}", ${country}.
+
+Respond ONLY with a single valid JSON object. No markdown, no code fences, no explanation — raw JSON only.
+
+The object must have exactly these fields:
+{
+  "transitLabel": "official transit authority name e.g. Transport for London, DMRC",
+  "currency": "local currency symbol e.g. £ ₹ $ € ¥",
+  "currencyCode": "3-letter code e.g. GBP INR USD EUR JPY",
+  "timezone": "short timezone e.g. GMT IST EST JST",
+  "code": "3-letter city/airport code e.g. LON DEL NYC",
+  "defaultFrom": "a well-known residential area or suburb name",
+  "defaultTo": "main CBD or central station name",
+  "popularRoutes": [
+    ["origin1","destination1"],
+    ["origin2","destination2"],
+    ["origin3","destination3"],
+    ["origin4","destination4"]
+  ],
+  "lines": [
+    {"line":"line name","route":"terminal A ↔ terminal B","status":"On Time","trains":12},
+    {"line":"line name","route":"terminal C ↔ terminal D","status":"On Time","trains":8},
+    {"line":"line name","route":"terminal E ↔ terminal F","status":"On Time","trains":6}
+  ],
+  "stations": [
+    {"stn":"station name","pct":72,"dir":"short description"},
+    {"stn":"station name","pct":85,"dir":"short description"},
+    {"stn":"station name","pct":58,"dir":"short description"},
+    {"stn":"station name","pct":64,"dir":"short description"}
+  ],
+  "alerts": [
+    {"type":"warn","msg":"realistic delay or issue alert for ${cityName}"},
+    {"type":"info","msg":"useful transit tip specific to ${cityName}"},
+    {"type":"safe","msg":"safety or accessibility feature in ${cityName}"},
+    {"type":"crowd","msg":"crowd management tip for a busy station in ${cityName}"}
+  ],
+  "budget": [number,number,number,number,number,number,0],
+  "monthlyBudget": number
+}
+
+Rules:
+- Use REAL station names, line names, and landmarks for ${cityName}
+- Currency and fares must be realistic for ${cityName}, ${country}
+- budget array = 7 daily spend values (Mon-Sun), last value 0 for Sunday
+- monthlyBudget = realistic monthly commute budget in local currency
+- Lines should be real transit lines that exist in ${cityName}
+- Popular routes must be real neighbourhoods/stations in ${cityName}`;
+
+  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1400,messages:[{role:"user",content:prompt}]})});
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(res.status===401?"AUTH_FAILED":e.error?.message||`HTTP ${res.status}`);}
+  const data=await res.json();
+  const cityTokens=(data.usage?.input_tokens||320)+(data.usage?.output_tokens||880);
+  TOKEN_SESSION.cityUsed+=cityTokens;
+  TOKEN_SESSION.used+=cityTokens;
+  const parsed=JSON.parse(data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim());
+
+  // Build full city object
+  const key=slugify(cityName);
+  return {
+    key,
+    name:cityName,
+    country,
+    flag,
+    currency:parsed.currency||"$",
+    code:parsed.code||key.slice(0,3).toUpperCase(),
+    accent,
+    accentB:accent+"BB",
+    timezone:parsed.timezone||"UTC",
+    transitLabel:parsed.transitLabel||`${cityName} Transit`,
+    defaultFrom:parsed.defaultFrom||cityName,
+    defaultTo:parsed.defaultTo||"City Centre",
+    popularRoutes:parsed.popularRoutes||[[cityName,"City Centre"]],
+    lines:parsed.lines||[],
+    stations:parsed.stations||[],
+    alerts:parsed.alerts||[],
+    budget:parsed.budget||[0,0,0,0,0,0,0],
+    monthlyBudget:parsed.monthlyBudget||200,
+  };
+}
+
+// ── ADD CITY PANEL ─────────────────────────────────────────────────────────────
+function AddCityPanel({apiKey,onAdded,onClose,existingKeys}){
+  const acc="#FF6B1A", accB="#F5A623";
+  const countries=Object.keys(WORLD_CITIES).sort();
+  const [selCountry,setSelCountry]=useState("");
+  const [selCity,setSelCity]    =useState("");
+  const [customCity,setCustomCity]=useState("");
+  const [step,setStep]          =useState("select"); // select | generating | preview | error
+  const [preview,setPreview]    =useState(null);
+  const [errMsg,setErrMsg]      =useState("");
+  const [progress,setProgress]  =useState("");
+
+  const citiesForCountry = selCountry ? WORLD_CITIES[selCountry]||[] : [];
+  const finalCityName = selCity==="__custom__" ? customCity.trim() : selCity;
+  const alreadyAdded  = finalCityName ? existingKeys.includes(slugify(finalCityName)) : false;
+
+  const generate=async()=>{
+    if(!finalCityName||!selCountry) return;
+    if(!apiKey){setErrMsg("API key required. Go back and set your key first.");setStep("error");return;}
+    setStep("generating");
+    setProgress("Analysing transit systems…");
+    setTimeout(()=>setProgress("Mapping transit lines & stations…"),1800);
+    setTimeout(()=>setProgress("Building popular routes & alerts…"),3600);
+    setTimeout(()=>setProgress("Finalising city configuration…"),5200);
+    try{
+      const cfg=await generateCityConfig(finalCityName,selCountry,apiKey);
+      setPreview(cfg);
+      setStep("preview");
+    }catch(e){
+      setErrMsg(e.message==="AUTH_FAILED"?"Invalid API key. Please update it.":e.message);
+      setStep("error");
+    }
+  };
+
+  const confirm=()=>{
+    if(!preview) return;
+    onAdded(preview);
+  };
+
+  const inp={width:"100%",background:C.surface2,border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:10,padding:"9px 12px",color:C.text,fontSize:13,outline:"none"};
+
+  return(
+    <div style={{background:"#0E0E18",borderRadius:"20px 20px 0 0",border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"85vh",overflowY:"auto"}}>
+      {/* Handle + title */}
+      <div style={{textAlign:"center",marginBottom:18}}>
+        <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 12px"}}/>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",
+          background:`linear-gradient(135deg,${acc},${accB})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+          ADD NEW CITY
+        </div>
+        <div style={{fontSize:10,color:C.muted,marginTop:2}}>AI generates full transit config instantly</div>
+      </div>
+
+      {/* ── SELECT STEP ── */}
+      {step==="select" && (
+        <div style={{animation:"fadeIn .3s ease"}}>
+          {/* Country dropdown */}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>🌍 SELECT COUNTRY</div>
+            <div style={{position:"relative"}}>
+              <select value={selCountry} onChange={e=>{setSelCountry(e.target.value);setSelCity("");}}
+                style={selStyle(acc)}>
+                <option value="">— Choose a country —</option>
+                {countries.map(c=>(
+                  <option key={c} value={c}>{COUNTRY_FLAGS[c]||"🌍"} {c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* City dropdown */}
+          {selCountry && (
+            <div style={{marginBottom:14,animation:"fadeIn .25s ease"}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>🏙️ SELECT CITY</div>
+              <div style={{position:"relative"}}>
+                <select value={selCity} onChange={e=>setSelCity(e.target.value)}
+                  style={selStyle(acc)}>
+                  <option value="">— Choose a city —</option>
+                  {citiesForCountry.map(c=>{
+                    const disabled=existingKeys.includes(slugify(c));
+                    return(
+                      <option key={c} value={c} disabled={disabled}>
+                        {c}{disabled?" (already added)":""}
+                      </option>
+                    );
+                  })}
+                  <option value="__custom__">✏️ Enter a different city…</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Custom city input */}
+          {selCity==="__custom__" && (
+            <div style={{marginBottom:14,animation:"fadeIn .25s ease"}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>✏️ CITY NAME</div>
+              <input value={customCity} onChange={e=>setCustomCity(e.target.value)}
+                placeholder={`e.g. Bengaluru, Osaka, Lyon…`}
+                onKeyDown={e=>{if(e.key==="Enter"&&finalCityName)generate();}}
+                style={inp}/>
+            </div>
+          )}
+
+          {/* Preview card of selection */}
+          {selCountry && finalCityName && (
+            <div style={{background:`linear-gradient(135deg,${COUNTRY_ACCENTS[selCountry]||acc}18,transparent)`,
+              border:`1px solid ${COUNTRY_ACCENTS[selCountry]||acc}44`,
+              borderRadius:12,padding:"12px 14px",marginBottom:14,animation:"fadeIn .25s ease"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:28}}>{COUNTRY_FLAGS[selCountry]||"🌍"}</span>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15}}>{finalCityName}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{selCountry}</div>
+                </div>
+                {alreadyAdded && (
+                  <span style={{marginLeft:"auto",fontSize:10,background:"rgba(0,212,170,0.15)",
+                    color:C.emerald,borderRadius:6,padding:"3px 8px"}}>✓ Already added</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* What AI will generate */}
+          {finalCityName && !alreadyAdded && (
+            <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,
+              borderRadius:11,padding:"11px 13px",marginBottom:14,fontSize:11,color:C.textDim,lineHeight:1.7}}>
+              🤖 AI will generate: transit lines · station crowd data · popular routes · live alerts · fare estimates · weekly budget
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{flex:"0 0 auto",background:"transparent",
+              border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",
+              cursor:"pointer",color:C.muted,fontSize:12}}>Cancel</button>
+            <button onClick={generate}
+              disabled={!finalCityName||!selCountry||alreadyAdded}
+              style={{flex:1,
+                background:(!finalCityName||!selCountry||alreadyAdded)?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${acc},${accB})`,
+                border:"none",borderRadius:10,padding:"11px",
+                cursor:(!finalCityName||!selCountry||alreadyAdded)?"not-allowed":"pointer",
+                fontWeight:700,fontSize:13,
+                color:(!finalCityName||!selCountry||alreadyAdded)?C.muted:"#000",
+                boxShadow:(!finalCityName||!selCountry||alreadyAdded)?"none":`0 3px 14px ${acc}44`,
+                transition:"all 0.2s"}}>
+              {alreadyAdded?"Already in your cities":"✦ Generate with AI"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── GENERATING STEP ── */}
+      {step==="generating" && (
+        <div style={{textAlign:"center",padding:"20px 0",animation:"fadeIn .3s ease"}}>
+          <div style={{fontSize:44,marginBottom:16}}>
+            <span className="spin" style={{display:"inline-block"}}>⚙️</span>
+          </div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.1em",
+            color:acc,marginBottom:8}}>GENERATING CITY</div>
+          <div style={{fontWeight:600,fontSize:14,marginBottom:6}}>{finalCityName}, {selCountry}</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:20}}>{progress}</div>
+          {/* Animated progress bar */}
+          <div style={{height:4,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden",margin:"0 20px"}}>
+            <div style={{height:"100%",background:`linear-gradient(90deg,${acc},${accB})`,
+              borderRadius:4,animation:"progressBar 6s linear forwards",width:"0%"}}/>
+          </div>
+          <div style={{fontSize:10,color:C.muted,marginTop:10}}>This takes about 5–8 seconds</div>
+          <style>{`@keyframes progressBar{from{width:0%}to{width:95%}}`}</style>
+        </div>
+      )}
+
+      {/* ── PREVIEW STEP ── */}
+      {step==="preview" && preview && (
+        <div style={{animation:"fadeIn .3s ease"}}>
+          {/* Success badge */}
+          <div style={{background:"rgba(0,212,170,0.1)",border:"1px solid rgba(0,212,170,0.25)",
+            borderRadius:11,padding:"10px 14px",marginBottom:14,
+            display:"flex",alignItems:"center",gap:9}}>
+            <span style={{fontSize:18}}>✅</span>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:C.emerald}}>City config generated!</div>
+              <div style={{fontSize:10,color:C.muted}}>Review below and confirm to add</div>
+            </div>
+          </div>
+
+          {/* City header */}
+          <div style={{background:`linear-gradient(135deg,${preview.accent}1A,${preview.accentB}0E)`,
+            border:`1px solid ${preview.accent}44`,borderRadius:13,padding:"14px",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{fontSize:28}}>{preview.flag}</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:16}}>{preview.name}</div>
+                <div style={{fontSize:11,color:C.muted}}>{preview.country} · {preview.code} · {preview.timezone}</div>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:C.textDim,marginBottom:4}}>🚉 {preview.transitLabel}</div>
+            <div style={{fontSize:11,color:C.textDim}}>
+              Default route: <span style={{color:C.text,fontWeight:500}}>{preview.defaultFrom}</span>
+              {" → "}<span style={{color:C.text,fontWeight:500}}>{preview.defaultTo}</span>
+            </div>
+          </div>
+
+          {/* Lines preview */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 13px",marginBottom:10}}>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:9}}>🚇 TRANSIT LINES</div>
+            {(preview.lines||[]).slice(0,3).map((l,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                paddingBottom:i<2?"8px 0":"0",marginBottom:i<2?8:0,
+                borderBottom:i<(preview.lines.length-1)&&i<2?`1px solid rgba(255,255,255,0.05)`:"none"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600}}>{l.line}</div>
+                  <div style={{fontSize:10,color:C.muted}}>{l.route}</div>
+                </div>
+                <div style={{fontSize:10,color:statusClr(l.status),fontWeight:600}}>{l.status}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Popular routes */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 13px",marginBottom:10}}>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:9}}>⚡ POPULAR ROUTES</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {(preview.popularRoutes||[]).map((p,i)=>(
+                <div key={i} style={{fontSize:10,background:"rgba(255,255,255,0.05)",
+                  border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 9px",color:C.textDim}}>
+                  {p[0]} → {p[1]}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Budget */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,
+            padding:"11px 13px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:11,color:C.muted}}>Monthly commute budget</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:600,color:preview.accentB}}>
+              {preview.currency}{preview.monthlyBudget.toLocaleString()}
+            </div>
+          </div>
+
+          {/* Confirm buttons */}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setStep("select")} style={{flex:"0 0 auto",background:"transparent",
+              border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",
+              cursor:"pointer",color:C.muted,fontSize:12}}>← Redo</button>
+            <button onClick={confirm} style={{
+              flex:1,background:`linear-gradient(135deg,${preview.accent},${preview.accentB})`,
+              border:"none",borderRadius:10,padding:"11px",
+              cursor:"pointer",fontWeight:700,fontSize:13,color:"#000",
+              boxShadow:`0 3px 14px ${preview.accent}44`}}>
+              ✓ Add {preview.name} to Tranzit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── ERROR STEP ── */}
+      {step==="error" && (
+        <div style={{animation:"fadeIn .3s ease"}}>
+          <div style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",
+            borderRadius:12,padding:"16px",marginBottom:16,textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>⚠️</div>
+            <div style={{fontWeight:600,color:C.crimson,marginBottom:6,fontSize:13}}>Generation Failed</div>
+            <div style={{fontSize:11,color:C.textDim,lineHeight:1.6}}>{errMsg}</div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{flex:1,background:"transparent",
+              border:`1px solid ${C.border}`,borderRadius:10,padding:"10px",
+              cursor:"pointer",color:C.muted,fontSize:12}}>Cancel</button>
+            <button onClick={()=>{setStep("select");setErrMsg("");}} style={{
+              flex:1,background:`linear-gradient(135deg,${acc},${accB})`,
+              border:"none",borderRadius:10,padding:"10px",cursor:"pointer",
+              fontWeight:700,fontSize:13,color:"#000"}}>Try Again</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── API KEY INLINE PANEL ───────────────────────────────────────────────────────
+function ApiKeyPanel({acc,accB,onSaved,onCancel,showCancel}){
+  const [val,setVal]=useState(""),  [show,setShow]=useState(false);
+  const [err,setErr]=useState(""),  [busy,setBusy]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{setTimeout(()=>ref.current?.focus(),80);},[]);
+  const save=async()=>{
+    const k=val.trim();
+    if(!k){setErr("Please paste your API key.");return;}
+    if(!k.startsWith("sk-ant-")){setErr("Key should start with sk-ant-…");return;}
+    setBusy(true);setErr("");
+    try{
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":k,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:10,messages:[{role:"user",content:"hi"}]})});
+      if(r.status===401){setBusy(false);setErr("Invalid key — authentication failed.");return;}
+    }catch(e){}
+    localStorage.setItem(API_KEY_STORAGE,k);setBusy(false);onSaved(k);
+  };
+  const inp={width:"100%",background:"rgba(0,0,0,0.3)",border:`1.5px solid ${err?"#FF4466":val.startsWith("sk-ant-")&&val.length>20?acc:C.border}`,borderRadius:10,padding:"10px 44px 10px 12px",color:C.text,fontSize:13,outline:"none",transition:"border 0.2s",boxSizing:"border-box"};
+  return(
+    <div className="glow" style={{background:`linear-gradient(135deg,${acc}12,${accB}08)`,border:`1px solid ${acc}44`,borderRadius:16,padding:"18px 16px",animation:"fadeIn 0.3s ease"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:40,height:40,borderRadius:12,background:`linear-gradient(135deg,${acc},${accB})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔑</div>
+        <div>
+          <div style={{fontWeight:700,fontSize:14,color:C.text}}>Connect Anthropic AI</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:1}}>One-time setup · Saved to your browser</div>
+        </div>
+      </div>
+      <div style={{marginBottom:14}}>
+        {[{n:"1",t:"Go to",link:"console.anthropic.com",url:"https://console.anthropic.com/settings/keys"},{n:"2",t:"Create a new API key"},{n:"3",t:"Paste it below"}].map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+            <div style={{width:20,height:20,borderRadius:"50%",background:`${acc}33`,border:`1px solid ${acc}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:acc,flexShrink:0}}>{s.n}</div>
+            <div style={{fontSize:11,color:C.textDim}}>{s.t}{" "}{s.link&&<a href={s.url} target="_blank" rel="noreferrer" style={{color:acc,textDecoration:"none",fontWeight:600}}>{s.link} ↗</a>}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{position:"relative",marginBottom:err?8:12}}>
+        <input ref={ref} type={show?"text":"password"} placeholder="sk-ant-api03-…" value={val} onChange={e=>{setVal(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")save();}} style={inp}/>
+        <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",color:C.muted,fontSize:16,padding:4}}>{show?"🙈":"👁️"}</button>
+      </div>
+      {err&&<div style={{fontSize:11,color:C.crimson,marginBottom:10,display:"flex",alignItems:"center",gap:5}}>⚠️ {err}</div>}
+      <div style={{display:"flex",gap:8}}>
+        {showCancel&&<button onClick={onCancel} style={{flex:"0 0 auto",background:"transparent",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",color:C.muted,fontSize:12}}>Cancel</button>}
+        <button onClick={save} disabled={busy||!val.trim()} style={{flex:1,background:busy||!val.trim()?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${acc},${accB})`,border:"none",borderRadius:10,padding:"11px",cursor:busy||!val.trim()?"not-allowed":"pointer",fontWeight:700,fontSize:13,color:busy||!val.trim()?C.muted:"#000",transition:"all 0.2s",boxShadow:busy||!val.trim()?"none":`0 3px 14px ${acc}44`}}>{busy?"⏳ Verifying…":"✓  Save & Activate"}</button>
+      </div>
+      <div style={{marginTop:10,fontSize:10,color:C.muted,textAlign:"center",lineHeight:1.5}}>🔒 Key stored in your browser only · Never sent anywhere except Anthropic</div>
+    </div>
+  );
+}
+
+function KeyStatusBar({apiKey,acc,accB,onEdit}){
+  return(
+    <div style={{background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.2)",borderRadius:11,padding:"8px 12px",marginBottom:11,display:"flex",alignItems:"center",gap:9,animation:"fadeIn 0.3s ease"}}>
+      <span style={{fontSize:14}}>🔑</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:10,color:C.emerald,fontWeight:600,letterSpacing:"0.06em"}}>AI CONNECTED</div>
+        <div style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:1}}>{maskKey(apiKey)}</div>
+      </div>
+      <button onClick={onEdit} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 10px",cursor:"pointer",color:C.textDim,fontSize:11}}>Change</button>
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function TranzitApp(){
+  // Load custom cities from localStorage
+  const loadCustom=()=>{try{return JSON.parse(localStorage.getItem(CUSTOM_CITY_STORAGE)||"{}");}catch{return{};}};
+
+  const [customCities,setCustomCities]=useState(loadCustom);
+  const allCities = {...BUILTIN_CITIES,...customCities};
+
+  // Build dynamic country groups from all cities
+  const buildGroups=()=>{
+    const map={};
+    Object.entries(allCities).forEach(([k,c])=>{
+      if(!map[c.country]) map[c.country]={country:c.country,flag:c.flag,cities:[]};
+      map[c.country].cities.push(k);
+    });
+    return Object.values(map);
+  };
+
+  const [cityKey,   setCityKey]   = useState("hyderabad");
+  const [activeTab, setActiveTab] = useState("plan");
+  const [selRoute,  setSelRoute]  = useState(0);
+  const [sosActive, setSosActive] = useState(false);
+  const [cityModal, setCityModal] = useState(false);
+  const [addCityOpen,setAddCityOpen]=useState(false);
+  const [time,      setTime]      = useState(new Date());
+
+  const [apiKey,       setApiKey]      = useState(()=>localStorage.getItem(API_KEY_STORAGE)||"");
+  const [showKeyPanel, setShowKeyPanel]= useState(false);
+  const [editingKey,   setEditingKey]  = useState(false);
+
+  // Token tracking state (session only, resets on page reload)
+  const [tokenStats, setTokenStats] = useState({used:0, saved:0, cityUsed:0});
+  const [lastCached, setLastCached] = useState(false);
+
+  const [from,    setFrom]    = useState("");
+  const [to,      setTo]      = useState("");
+  const [editFrom,setEditFrom]=useState(false);
+  const [editTo,  setEditTo]  =useState(false);
+  const [routes,  setRoutes]  =useState([]);
+  const [loading, setLoading] =useState(false);
+  const [aiError, setAiError] =useState("");
+  const [searched,setSearched]=useState(false);
+
+  const city = allCities[cityKey] || allCities["hyderabad"];
+  const acc  = city.accent;
+  const accB = city.accentB;
+  const groups= buildGroups();
+
+  useEffect(()=>{ const t=setInterval(()=>setTime(new Date()),1000); return()=>clearInterval(t);},[]);
+  useEffect(()=>{ setFrom(city.defaultFrom);setTo(city.defaultTo);setRoutes([]);setSearched(false);setSelRoute(0);setAiError("");setShowKeyPanel(false);setEditingKey(false);},[cityKey]);
+
+  const fmtTime   =d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
+  const maxBudget =Math.max(...city.budget,1);
+  const totalWeek =city.budget.reduce((s,v)=>s+v,0);
+  const fmtFare   =v=>(typeof v==="number"&&v%1!==0)?v.toFixed(2):String(Math.round(v));
+  const swap      =()=>{const t=from;setFrom(to);setTo(t);setRoutes([]);setSearched(false);};
+
+  const handleFindRoutes=()=>{
+    if(!from.trim()||!to.trim()) return;
+    if(!apiKey){setShowKeyPanel(true);setEditingKey(false);return;}
+    doFetch();
+  };
+
+  const doFetch=async(keyOverride)=>{
+    const key=keyOverride||apiKey;
+    setLoading(true);setAiError("");setRoutes([]);setSearched(false);setShowKeyPanel(false);setEditingKey(false);setLastCached(false);
+    try{
+      const result=await fetchAIRoutes(city,from.trim(),to.trim(),key,(ts)=>setTokenStats({...ts}));
+      setRoutes(result.routes);setSelRoute(0);setSearched(true);
+      setLastCached(result.fromCache||false);
+    }catch(e){
+      if(e.message==="AUTH_FAILED"){setAiError("API key invalid or expired. Tap 'Change' to update.");localStorage.removeItem(API_KEY_STORAGE);setApiKey("");setEditingKey(true);}
+      else setAiError(`Route generation failed: ${e.message}`);
+    }
+    setLoading(false);
+  };
+
+  const onKeySaved=k=>{setApiKey(k);setShowKeyPanel(false);setEditingKey(false);setAiError("");if(from.trim()&&to.trim())doFetch(k);};
+  const onEditKey =()=>{setEditingKey(true);setShowKeyPanel(false);setRoutes([]);setSearched(false);};
+
+  const onCityAdded=(cfg)=>{
+    const updated={...customCities,[cfg.key]:cfg};
+    setCustomCities(updated);
+    localStorage.setItem(CUSTOM_CITY_STORAGE,JSON.stringify(updated));
+    setCityKey(cfg.key);
+    setAddCityOpen(false);
+    setCityModal(false);
+  };
+
+  const removeCustomCity=(key)=>{
+    const updated={...customCities};
+    delete updated[key];
+    setCustomCities(updated);
+    localStorage.setItem(CUSTOM_CITY_STORAGE,JSON.stringify(updated));
+    if(cityKey===key) setCityKey("hyderabad");
+  };
+
+  const TABS=[
+    {id:"plan",   label:"Route AI",  icon:"🗺️"},
+    {id:"live",   label:"Live Intel",icon:"📡"},
+    {id:"crowd",  label:"Crowd Map", icon:"👥"},
+    {id:"budget", label:"Spend",     icon:"💰"},
+  ];
+
+  const inp={width:"100%",background:"transparent",border:`1px solid ${acc}77`,borderRadius:8,padding:"8px 10px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"};
+
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,color:C.text,
+      backgroundImage:`radial-gradient(ellipse at 18% 0%,${acc}0E 0%,transparent 52%),radial-gradient(ellipse at 82% 92%,${accB}0B 0%,transparent 52%)`}}>
+
+      {/* ═══ HEADER ═══ */}
+      <div style={{padding:"16px 16px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:`${C.bg}F2`,backdropFilter:"blur(14px)",zIndex:50}}>
+        <div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,letterSpacing:"0.08em",lineHeight:1,background:`linear-gradient(135deg,${acc},${accB})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRANZIT</div>
+          <div style={{fontSize:9,color:C.muted,letterSpacing:"0.14em",marginTop:1}}>GLOBAL COMMUTE INTELLIGENCE</div>
+        </div>
+        <div style={{display:"flex",gap:7,alignItems:"center"}}>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:15,color:accB}}>{fmtTime(time)}</div>
+            <div style={{fontSize:9,color:C.muted}}>{city.timezone}</div>
+          </div>
+          <button onClick={()=>setCityModal(true)} style={{background:`linear-gradient(135deg,${acc}22,${accB}14)`,border:`1px solid ${acc}55`,borderRadius:10,padding:"6px 10px",cursor:"pointer",color:C.text,fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+            <span style={{fontSize:14}}>{city.flag}</span>{city.name}<span style={{color:C.muted,fontSize:9}}>▼</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ═══ CITY MODAL ═══ */}
+      {cityModal && !addCityOpen && (
+        <div onClick={()=>setCityModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:100,display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
+          <div onClick={e=>e.stopPropagation()} className="modal-sheet" style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:`1px solid ${C.border}`,padding:"18px 14px 0",maxHeight:"80vh",overflowY:"auto"}}>
+            <div style={{textAlign:"center",marginBottom:14}}>
+              <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 10px"}}/>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:"0.1em"}}>SELECT YOUR CITY</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:2}}>
+                {Object.keys(allCities).length} cities · {groups.length} countries
+              </div>
+            </div>
+
+            {/* City groups */}
+            {groups.map(g=>(
+              <div key={g.country} style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:7,display:"flex",alignItems:"center",gap:5}}>
+                  <span>{g.flag}</span>{g.country.toUpperCase()}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                  {g.cities.map(ck=>{
+                    const cd=allCities[ck]; const active=ck===cityKey;
+                    const isCustom=!!customCities[ck];
+                    return(
+                      <div key={ck} style={{position:"relative",display:"inline-flex",alignItems:"center",gap:0}}>
+                        <button onClick={()=>{setCityKey(ck);setCityModal(false);}} style={{
+                          background:active?`linear-gradient(135deg,${cd.accent},${cd.accentB})`:C.surface,
+                          border:active?"none":`1px solid ${C.border}`,
+                          color:active?"#000":C.text,borderRadius:isCustom?"9px 0 0 9px":9,
+                          padding:"7px 15px",cursor:"pointer",fontSize:12,fontWeight:active?700:400}}>
+                          {cd.name}
+                          {isCustom&&<span style={{fontSize:9,marginLeft:4,opacity:0.7}}>AI</span>}
+                        </button>
+                        {isCustom&&(
+                          <button onClick={e=>{e.stopPropagation();removeCustomCity(ck);}} style={{
+                            background:active?"rgba(0,0,0,0.2)":"rgba(255,68,102,0.12)",
+                            border:active?"none":`1px solid ${C.border}`,
+                            borderLeft:"none",borderRadius:"0 9px 9px 0",
+                            padding:"7px 8px",cursor:"pointer",color:active?"rgba(0,0,0,0.6)":C.crimson,
+                            fontSize:11,display:"flex",alignItems:"center"}}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Add City button */}
+            <div style={{padding:"14px 0 28px"}}>
+              <button onClick={()=>setAddCityOpen(true)} style={{
+                width:"100%",background:`linear-gradient(135deg,${acc}18,${accB}0E)`,
+                border:`1.5px dashed ${acc}55`,borderRadius:12,padding:"13px",
+                cursor:"pointer",color:acc,fontWeight:700,fontSize:13,
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                transition:"all 0.2s"}}>
+                <span style={{fontSize:18}}>＋</span> Add New City with AI
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ ADD CITY MODAL ═══ */}
+      {cityModal && addCityOpen && (
+        <div onClick={()=>{setAddCityOpen(false);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:110,display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
+          <div onClick={e=>e.stopPropagation()} className="modal-sheet" style={{width:"100%"}}>
+            <AddCityPanel
+              apiKey={apiKey}
+              onAdded={onCityAdded}
+              onClose={()=>setAddCityOpen(false)}
+              existingKeys={Object.keys(allCities)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ═══ SOS ═══ */}
+      {sosActive&&(
+        <div style={{margin:"10px 14px 0",background:"rgba(255,68,102,0.11)",border:"1px solid rgba(255,68,102,0.4)",borderRadius:11,padding:"10px 13px",display:"flex",alignItems:"center",gap:9,animation:"fadeIn 0.3s ease"}}>
+          <span style={{fontSize:17}}>🆘</span>
+          <div><div style={{fontWeight:700,color:C.crimson,fontSize:11}}>SOS ACTIVATED</div><div style={{fontSize:10,color:C.textDim}}>Location shared · Contacts & emergency services notified</div></div>
+          <button onClick={()=>setSosActive(false)} style={{marginLeft:"auto",background:"rgba(255,68,102,0.14)",border:"1px solid rgba(255,68,102,0.4)",color:C.crimson,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10}}>CANCEL</button>
+        </div>
+      )}
+
+      {/* ═══ TABS ═══ */}
+      <div style={{display:"flex",gap:5,padding:"10px 14px 0",overflowX:"auto"}}>
+        {TABS.map(tab=>(
+          <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{flexShrink:0,transition:"all 0.2s",background:activeTab===tab.id?`linear-gradient(135deg,${acc},${accB})`:C.surface,color:activeTab===tab.id?"#000":C.textDim,border:activeTab===tab.id?"none":`1px solid ${C.border}`,borderRadius:9,padding:"7px 11px",cursor:"pointer",fontSize:11,fontWeight:activeTab===tab.id?700:400,display:"flex",alignItems:"center",gap:4}}>
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ═══ CONTENT ═══ */}
+      <div style={{padding:"12px 14px 180px"}}>
+
+        {/* ── ROUTE AI ── */}
+        {activeTab==="plan"&&(
+          <div>
+            <div style={{background:C.surface,borderRadius:14,border:`1px solid ${C.border}`,padding:"13px 14px",marginBottom:10}}>
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.emerald}}>●</span>&nbsp; FROM</div>
+                {editFrom?(<input autoFocus value={from} onChange={e=>setFrom(e.target.value)} onBlur={()=>setEditFrom(false)} onKeyDown={e=>{if(e.key==="Enter")setEditFrom(false);}} placeholder={`e.g. ${city.defaultFrom}`} style={inp}/>):(<div onClick={()=>setEditFrom(true)} style={{display:"flex",alignItems:"center",gap:8,cursor:"text",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:"rgba(255,255,255,0.02)"}}><span style={{fontSize:13,fontWeight:600,flex:1,color:from?C.text:C.muted}}>{from||"Tap to enter origin…"}</span><span style={{fontSize:12,color:C.muted}}>✏️</span></div>)}
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{flex:1,height:1,background:C.border}}/>
+                <button onClick={swap} style={{background:`${acc}22`,border:`1px solid ${acc}55`,borderRadius:"50%",width:30,height:30,cursor:"pointer",color:acc,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>⇄</button>
+                <div style={{flex:1,height:1,background:C.border}}/>
+              </div>
+              <div>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.crimson}}>●</span>&nbsp; TO</div>
+                {editTo?(<input autoFocus value={to} onChange={e=>setTo(e.target.value)} onBlur={()=>setEditTo(false)} onKeyDown={e=>{if(e.key==="Enter")setEditTo(false);}} placeholder={`e.g. ${city.defaultTo}`} style={inp}/>):(<div onClick={()=>setEditTo(true)} style={{display:"flex",alignItems:"center",gap:8,cursor:"text",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:"rgba(255,255,255,0.02)"}}><span style={{fontSize:13,fontWeight:600,flex:1,color:to?C.text:C.muted}}>{to||"Tap to enter destination…"}</span><span style={{fontSize:12,color:C.muted}}>✏️</span></div>)}
+              </div>
+            </div>
+
+            <div style={{marginBottom:11}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>⚡ POPULAR IN {city.name.toUpperCase()}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {(city.popularRoutes||[]).map((pair,i)=>{
+                  const active=from===pair[0]&&to===pair[1];
+                  return(<button key={i} onClick={()=>{setFrom(pair[0]);setTo(pair[1]);setRoutes([]);setSearched(false);setShowKeyPanel(false);}} style={{background:active?`linear-gradient(135deg,${acc},${accB})`:C.surface,color:active?"#000":C.textDim,border:`1px solid ${active?"transparent":C.border}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,whiteSpace:"nowrap",transition:"all 0.18s"}}>{pair[0]} → {pair[1]}</button>);
+                })}
+              </div>
+            </div>
+
+            {apiKey&&!editingKey&&!showKeyPanel&&<KeyStatusBar apiKey={apiKey} acc={acc} accB={accB} onEdit={onEditKey}/>}
+            {(showKeyPanel||editingKey)&&(<div style={{marginBottom:12}}><ApiKeyPanel acc={acc} accB={accB} onSaved={onKeySaved} onCancel={()=>{setShowKeyPanel(false);setEditingKey(false);}} showCancel={!!apiKey||editingKey}/></div>)}
+
+            {loading&&[1,2,3,4,5].map(i=>(<div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"14px",marginBottom:9,opacity:1.1-i*0.15,animation:"shimmer 1.4s infinite"}}><div style={{height:13,background:"rgba(255,255,255,0.06)",borderRadius:6,width:"55%",marginBottom:8}}/><div style={{height:9,background:"rgba(255,255,255,0.04)",borderRadius:6,width:"85%",marginBottom:12}}/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>{[1,2,3,4].map(j=><div key={j} style={{height:22,background:"rgba(255,255,255,0.04)",borderRadius:4}}/>)}</div></div>))}
+
+            {aiError&&!loading&&(<div style={{background:"rgba(255,68,102,0.09)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:11,padding:"12px 14px",marginBottom:10,fontSize:12,color:C.crimson,lineHeight:1.55,animation:"fadeIn 0.3s ease"}}>⚠️ {aiError}</div>)}
+
+            {searched&&!loading&&routes.length>0&&(
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{fontSize:11,color:C.textDim}}><span style={{color:C.emerald}}>●</span>&nbsp;<strong style={{color:C.text}}>{routes.length} routes</strong> · {from} → {to}</div>
+                  <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                    {lastCached&&<div style={{fontSize:9,background:"rgba(0,212,170,0.15)",color:C.emerald,borderRadius:5,padding:"2px 7px"}}>⚡ CACHED</div>}
+                    <div style={{fontSize:9,background:`${acc}20`,color:acc,borderRadius:5,padding:"2px 7px"}}>🤖 LIVE AI</div>
+                  </div>
+                </div>
+                {routes.map((r,i)=>(
+                  <div key={r.id||i} className="route-card" onClick={()=>setSelRoute(i)} style={{animationDelay:`${i*0.07}s`,background:selRoute===i?`linear-gradient(135deg,${acc}18,${accB}0A)`:C.surface,border:selRoute===i?`1px solid ${acc}66`:`1px solid ${C.border}`,borderRadius:13,padding:"12px 13px",marginBottom:9,cursor:"pointer",transition:"all 0.22s"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:20}}>{r.icon}</span>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <span style={{fontWeight:600,fontSize:13}}>{r.label}</span>
+                          <div style={{display:"flex",gap:5}}>
+                            {r.delay>0&&<span style={{fontSize:9,background:"rgba(255,68,102,0.14)",color:C.crimson,borderRadius:5,padding:"2px 6px"}}>+{r.delay}m</span>}
+                            {i===0&&<span style={{fontSize:9,background:`${acc}22`,color:acc,borderRadius:5,padding:"2px 6px"}}>✦ BEST</span>}
+                          </div>
+                        </div>
+                        <div style={{fontSize:10,color:C.muted,marginTop:2}}>{r.via}</div>
+                      </div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginTop:10}}>
+                      {[{l:"TIME",v:`${r.time}m`,c:C.sky},{l:"FARE",v:`${city.currency}${fmtFare(r.fare)}`,c:accB},{l:"CROWD",v:`${r.crowd}%`,c:crowdColor(r.crowd)},{l:"CO₂",v:`${r.co2}kg`,c:C.emerald}].map(m=>(<div key={m.l} style={{textAlign:"center"}}><div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em"}}>{m.l}</div><div style={{fontSize:14,fontWeight:700,color:m.c,fontFamily:"'DM Mono',monospace"}}>{m.v}</div></div>))}
+                    </div>
+                    <div style={{marginTop:9}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.muted,marginBottom:3}}><span>Reliability</span><span>{r.reliability}%</span></div>
+                      <div style={{height:3,background:"rgba(255,255,255,0.08)",borderRadius:3}}><div style={{height:"100%",width:`${r.reliability}%`,background:`linear-gradient(90deg,${acc},${accB})`,borderRadius:3}}/></div>
+                    </div>
+                    {selRoute===i&&r.tip&&(<div style={{marginTop:10,background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.15)",borderRadius:8,padding:"8px 10px",fontSize:10,color:C.textDim,lineHeight:1.65}}>🤖 {r.tip}</div>)}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!loading&&!searched&&!showKeyPanel&&!editingKey&&(
+              <div style={{textAlign:"center",padding:"26px 0 10px",color:C.muted}}>
+                <div style={{fontSize:36,marginBottom:10}}>🗺️</div>
+                <div style={{fontSize:13,marginBottom:6,color:C.textDim}}>Where are you headed in {city.name}?</div>
+                <div style={{fontSize:11,lineHeight:1.65}}>{apiKey?"Set origin & destination — AI generates live multi-modal routes":"Set origin & destination, then tap Find Routes to connect AI"}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── LIVE INTEL ── */}
+        {activeTab==="live"&&(
+          <div>
+            <div style={{fontSize:11,color:C.textDim,marginBottom:10,display:"flex",alignItems:"center",gap:6}}><span style={{display:"inline-block",width:7,height:7,background:C.emerald,borderRadius:"50%",animation:"pulse 1.5s infinite"}}/>Live feed · {city.transitLabel}</div>
+            {(city.alerts||[]).map((a,i)=>(<div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${a.type==="warn"?accB:a.type==="safe"?C.emerald:a.type==="crowd"?acc:C.sky}`,borderRadius:11,padding:"11px 13px",marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13}}>{alertIcon(a.type)}</span><span style={{fontSize:9,color:C.muted}}>{["2 min ago","5 min ago","Just now","Now"][i]}</span></div><div style={{fontSize:12,lineHeight:1.55}}>{a.msg}</div></div>))}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:11,letterSpacing:"0.08em"}}>🚉 {city.transitLabel?.toUpperCase()} — LINE STATUS</div>
+              {(city.lines||[]).map((l,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<(city.lines.length-1)?`1px solid rgba(255,255,255,0.05)`:"none"}}><div><div style={{fontWeight:600,fontSize:12}}>{l.line}</div><div style={{fontSize:10,color:C.muted}}>{l.route}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:11,color:statusClr(l.status),fontWeight:600}}>{l.status}</div><div style={{fontSize:9,color:C.muted}}>{l.trains} trains active</div></div></div>))}
+            </div>
+          </div>
+        )}
+
+        {/* ── CROWD MAP ── */}
+        {activeTab==="crowd"&&(
+          <div>
+            <div style={{fontSize:11,color:C.textDim,marginBottom:10}}>Platform density · {city.name} · {fmtTime(time)}</div>
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>📍 STATION CROWD LEVELS</div>
+              {(city.stations||[]).map((s,i)=>(<div key={i} style={{marginBottom:13}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:5}}><div><span style={{fontWeight:600}}>{s.stn}</span><span style={{fontSize:9,color:C.muted,marginLeft:7}}>{s.dir}</span></div><span style={{fontFamily:"'DM Mono',monospace",color:crowdColor(s.pct),fontWeight:600}}>{s.pct}%</span></div><div style={{height:5,background:"rgba(255,255,255,0.08)",borderRadius:4}}><div style={{height:"100%",width:`${s.pct}%`,background:`linear-gradient(90deg,${crowdColor(s.pct)}88,${crowdColor(s.pct)})`,borderRadius:4}}/></div><div style={{fontSize:9,color:crowdColor(s.pct),marginTop:2}}>{s.pct>85?"⚠ VERY CROWDED":s.pct>65?"BUSY":"✓ CLEAR"}</div></div>))}
+            </div>
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>🚃 COACH OCCUPANCY</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                {[{l:"Car 1",p:85},{l:"Car 2",p:48},{l:"Car 3 ♀",p:62},{l:"Car 4",p:91},{l:"Car 5",p:70},{l:"Car 6",p:38}].map((c,i)=>(<div key={i} style={{textAlign:"center"}}><div style={{fontSize:9,color:C.muted,marginBottom:6}}>{c.l}</div><div style={{width:46,height:46,borderRadius:"50%",margin:"0 auto 6px",background:`conic-gradient(${crowdColor(c.p)} ${c.p*3.6}deg,rgba(255,255,255,0.08) 0)`,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:30,height:30,borderRadius:"50%",background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:600,color:crowdColor(c.p)}}>{c.p}%</div></div><div style={{fontSize:9,color:crowdColor(c.p),fontWeight:600}}>{c.p>85?"PACKED":c.p>65?"BUSY":"CLEAR"}</div></div>))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── SPEND ── */}
+        {activeTab==="budget"&&(
+          <div>
+            <div style={{background:`linear-gradient(135deg,${acc}1A,${accB}0E)`,border:`1px solid ${acc}33`,borderRadius:14,padding:"15px 17px",marginBottom:13}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:4}}>THIS WEEK</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:32,color:accB}}>{city.currency}{totalWeek%1!==0?totalWeek.toFixed(2):Math.round(totalWeek)}</div>
+              <div style={{fontSize:10,color:C.textDim,marginTop:3}}>Monthly budget: <span style={{color:accB}}>{city.currency}{city.monthlyBudget?.toLocaleString()}</span></div>
+              <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:3,marginTop:10}}><div style={{height:"100%",width:`${Math.min((totalWeek/city.monthlyBudget)*100,100)}%`,background:`linear-gradient(90deg,${acc},${accB})`,borderRadius:3}}/></div>
+              <div style={{fontSize:9,color:C.muted,marginTop:2}}>{Math.round((totalWeek/city.monthlyBudget)*100)}% of monthly budget used</div>
+            </div>
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"13px 13px 10px"}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:13,letterSpacing:"0.08em"}}>DAILY SPEND</div>
+              <div style={{display:"flex",alignItems:"flex-end",gap:8,height:90}}>
+                {city.budget.map((v,i)=>(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}><div style={{fontSize:8,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{v>0?`${city.currency}${v%1!==0?v.toFixed(1):v}`:"—"}</div><div style={{width:"100%",borderRadius:"3px 3px 0 0",minHeight:v>0?3:0,height:`${(v/maxBudget)*65}px`,background:v>city.monthlyBudget/18?`linear-gradient(180deg,${C.crimson},${C.crimson}88)`:`linear-gradient(180deg,${acc},${acc}77)`,transition:"height 0.5s ease"}}/><div style={{fontSize:10,color:C.muted}}>{DAYS[i]}</div></div>))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ═══ BOTTOM BAR + FOOTER ═══ */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:`linear-gradient(transparent,${C.bg} 28%)`,paddingTop:10}}>
+
+        {/* Token Intelligence Strip */}
+        <div style={{margin:"0 14px 8px",background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:11,padding:"7px 12px",display:"flex",alignItems:"center",gap:0}}>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12}}>⚡</span>
+            <div>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em"}}>SESSION TOKENS USED</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:tokenStats.used>0?accB:C.muted}}>{tokenStats.used.toLocaleString()}</div>
+            </div>
+          </div>
+          <div style={{width:1,height:28,background:C.border,margin:"0 10px"}}/>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12}}>🎯</span>
+            <div>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em"}}>TOKENS SAVED (CACHE)</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:tokenStats.saved>0?C.emerald:C.muted}}>
+                {tokenStats.saved>0?"+":""}{tokenStats.saved.toLocaleString()}
+              </div>
+            </div>
+          </div>
+          <div style={{width:1,height:28,background:C.border,margin:"0 10px"}}/>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12}}>🔁</span>
+            <div>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em"}}>CACHE HITS</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:SESSION_ROUTE_CACHE.size>0?acc:C.muted}}>
+                {[...SESSION_ROUTE_CACHE.keys()].filter(k=>k).length} routes
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SOS + Find Routes buttons */}
+        <div style={{display:"flex",gap:8,padding:"0 14px 8px"}}>
+          <button onClick={()=>setSosActive(!sosActive)} style={{flex:"0 0 auto",background:sosActive?`linear-gradient(135deg,${C.crimson},#aa0022)`:"rgba(255,68,102,0.11)",border:`1px solid ${C.crimson}`,color:C.crimson,borderRadius:12,padding:"10px 14px",cursor:"pointer",fontWeight:700,fontSize:12,boxShadow:sosActive?`0 0 16px rgba(255,68,102,0.45)`:"none",transition:"all 0.25s"}}>🆘 SOS</button>
+          <button onClick={()=>activeTab==="plan"?handleFindRoutes():null}
+            disabled={activeTab==="plan"&&(loading||!from.trim()||!to.trim())}
+            style={{flex:1,
+              background:(activeTab==="plan"&&(loading||!from.trim()||!to.trim()))
+                ?"rgba(255,255,255,0.07)"
+                :`linear-gradient(135deg,${acc},${accB})`,
+              border:"none",borderRadius:12,padding:"12px 18px",
+              cursor:(activeTab==="plan"&&(loading||!from.trim()||!to.trim()))?"not-allowed":"pointer",
+              fontWeight:700,fontSize:13,
+              color:(activeTab==="plan"&&(loading||!from.trim()||!to.trim()))?C.muted:"#000",
+              letterSpacing:"0.02em",
+              boxShadow:(activeTab==="plan"&&(loading||!from.trim()||!to.trim()))?"none":`0 4px 16px ${acc}55`,
+              transition:"all 0.25s"}}>
+            {activeTab==="plan"
+              ? loading ? "🤖  Finding routes…"
+                : `🚀 Find Routes · ${city.name}`
+              : `${city.flag} ${city.name} · ${city.code}`}
+          </button>
+        </div>
+
+        {/* Attribution Footer */}
+        <div style={{borderTop:`1px solid ${C.border}`,padding:"8px 16px 14px",textAlign:"center"}}>
+          <div style={{fontSize:10,color:C.muted,lineHeight:1.7}}>
+            Designed by <span style={{color:acc,fontWeight:600}}>Krishnamurthy Kandregula</span> · Made by <span style={{color:accB,fontWeight:600}}>Claude</span>
+          </div>
+          <div style={{fontSize:9,color:"rgba(255,255,255,0.22)",letterSpacing:"0.06em",marginTop:1}}>
+            KRISHNAMURTHY KANDREGULA INNOVATION LAB
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<TranzitApp/>);
+</script>
+</body>
+</html>
