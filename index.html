@@ -629,6 +629,73 @@ const _saveCache = (key, routes, tokens) => {
 // Token counters (session only — resets on reload, but cache savings are persistent)
 const TOKEN_SESSION = { used: 0, saved: 0, cityUsed: 0 };
 
+// ── MODEL FALLBACK CHAIN ──────────────────────────────────────────────────────
+// Ordered from newest → oldest. App tries each in sequence if one is deprecated/errors.
+const MODEL_CHAIN = [
+  { id:"claude-sonnet-4-6",   label:"Sonnet 4.6",  status:"active"  },
+  { id:"claude-sonnet-4-5-20250929", label:"Sonnet 4.5", status:"active" },
+  { id:"claude-opus-4-6",     label:"Opus 4.6",    status:"active"  },
+  { id:"claude-haiku-4-5-20251001",  label:"Haiku 4.5",  status:"active" },
+];
+const MODEL_STORAGE = "tranzit_active_model";
+
+// Active model — persisted so we don't re-probe on every reload
+let ACTIVE_MODEL = (() => {
+  const saved = localStorage.getItem(MODEL_STORAGE);
+  const match = MODEL_CHAIN.find(m => m.id === saved);
+  return match || MODEL_CHAIN[0];
+})();
+
+// Deprecated/retired HTTP status codes & error patterns
+const isDeprecatedError = (status, errMsg) =>
+  status === 404 ||
+  (errMsg && /deprecated|retired|not found|invalid model|model_not_found/i.test(errMsg));
+
+// Try each model in chain until one works; update ACTIVE_MODEL on success
+async function callWithFallback(apiKey, bodyFn, onModelChange) {
+  const startIdx = MODEL_CHAIN.findIndex(m => m.id === ACTIVE_MODEL.id);
+  const orderedChain = [
+    ...MODEL_CHAIN.slice(startIdx),
+    ...MODEL_CHAIN.slice(0, startIdx),
+  ];
+
+  for (const model of orderedChain) {
+    const body = bodyFn(model.id);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key":apiKey,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (res.ok) {
+      // Update active model if it changed
+      if (model.id !== ACTIVE_MODEL.id) {
+        ACTIVE_MODEL = model;
+        localStorage.setItem(MODEL_STORAGE, model.id);
+        onModelChange && onModelChange(model);
+      }
+      return { res, model };
+    }
+
+    const errData = await res.json().catch(()=>({}));
+    const errMsg  = errData.error?.message || "";
+
+    if (res.status === 401) throw new Error("AUTH_FAILED");
+    if (isDeprecatedError(res.status, errMsg)) {
+      console.warn(`[Tranzit] Model ${model.id} deprecated/retired — trying next…`);
+      continue; // try next model
+    }
+    // Other error (rate limit, server error) — throw immediately
+    throw new Error(errMsg || `HTTP ${res.status}`);
+  }
+  throw new Error("All models in fallback chain failed. Please try again.");
+}
+
 function cacheKey(cityCode, from, to) {
   return `${cityCode}|${from.trim().toLowerCase()}|${to.trim().toLowerCase()}`;
 }
@@ -641,8 +708,8 @@ const cacheAge = (entry) => {
   return `${Math.round(ms/86400000)}d ago`;
 };
 
-// ── AI ROUTE FETCH (persistent cache + token tracking) ───────────────────────
-async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate) {
+// ── AI ROUTE FETCH (persistent cache + model fallback + token tracking) ───────
+async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChange) {
   const key = cacheKey(city.code, from, to);
 
   // Cache HIT → return instantly, credit saved tokens
@@ -653,28 +720,38 @@ async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate) {
     return { routes: cached.routes, fromCache: true, cacheAge: cacheAge(cached), tokensSaved: cached.tokens };
   }
 
-  // Compressed prompt (saves ~30% input tokens vs verbose version)
   const prompt = `Transit expert: ${city.name}, ${city.country}. System: ${city.transitLabel}. Currency: ${city.currency}.
 5 routes from "${from}" to "${to}". Raw JSON array only, no markdown.
 Each: {"id":"str","icon":"emoji","label":"name","via":"real stops","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"insight"}
 Use real names. Include local modes (auto/tram/ferry if applicable).`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:900, messages:[{role:"user",content:prompt}] })
-  });
-  if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(res.status===401?"AUTH_FAILED":e.error?.message||`HTTP ${res.status}`); }
+  const { res, model } = await callWithFallback(
+    apiKey,
+    (modelId) => ({ model: modelId, max_tokens: 1800, messages:[{role:"user",content:prompt}] }),
+    onModelChange
+  );
+
   const data = await res.json();
-  const tokensUsed = (data.usage?.input_tokens||180) + (data.usage?.output_tokens||520);
+  const tokensUsed = (data.usage?.input_tokens||180) + (data.usage?.output_tokens||700);
   TOKEN_SESSION.used += tokensUsed;
 
-  const routes = JSON.parse(data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim());
+  let raw = data.content.map(b=>b.text||"").join("").trim();
+  raw = raw.replace(/```json\s*/gi,"").replace(/```\s*/gi,"").trim();
+  const arrStart = raw.indexOf("[");
+  const arrEnd   = raw.lastIndexOf("]");
+  if (arrStart === -1) throw new Error("No JSON array found in response");
+  let jsonStr = arrEnd > arrStart ? raw.slice(arrStart, arrEnd+1) : raw.slice(arrStart);
+  if (!jsonStr.endsWith("]")) {
+    const lastComma = jsonStr.lastIndexOf(",{");
+    if (lastComma > 0) jsonStr = jsonStr.slice(0, lastComma);
+    jsonStr = jsonStr.trimEnd().replace(/,\s*$/, "") + "]";
+  }
+  const routes = JSON.parse(jsonStr);
+  if (!Array.isArray(routes) || routes.length === 0) throw new Error("Empty routes returned");
 
-  // Persist to localStorage
   _saveCache(key, routes, tokensUsed);
   onTokenUpdate && onTokenUpdate({ ...TOKEN_SESSION });
-  return { routes, fromCache: false, tokensUsed };
+  return { routes, fromCache: false, tokensUsed, model };
 }
 
 // ── AI CITY CONFIG GENERATOR ───────────────────────────────────────────────────
@@ -730,13 +807,21 @@ Rules:
 - Lines should be real transit lines that exist in ${cityName}
 - Popular routes must be real neighbourhoods/stations in ${cityName}`;
 
-  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1400,messages:[{role:"user",content:prompt}]})});
+  const {res} = await callWithFallback(
+    apiKey,
+    (modelId)=>({model:modelId, max_tokens:2000, messages:[{role:"user",content:prompt}]}),
+    null
+  );
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(res.status===401?"AUTH_FAILED":e.error?.message||`HTTP ${res.status}`);}
   const data=await res.json();
-  const cityTokens=(data.usage?.input_tokens||320)+(data.usage?.output_tokens||880);
+  const cityTokens=(data.usage?.input_tokens||320)+(data.usage?.output_tokens||900);
   TOKEN_SESSION.cityUsed+=cityTokens;
   TOKEN_SESSION.used+=cityTokens;
-  const parsed=JSON.parse(data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim());
+  let cityRaw=data.content.map(b=>b.text||"").join("").trim().replace(/```json\s*/gi,"").replace(/```\s*/gi,"").trim();
+  const objStart=cityRaw.indexOf("{"); const objEnd=cityRaw.lastIndexOf("}");
+  if(objStart===-1) throw new Error("No JSON object in city config response");
+  const cityJson = objEnd>objStart ? cityRaw.slice(objStart,objEnd+1) : cityRaw.slice(objStart)+"}";
+  const parsed=JSON.parse(cityJson);
 
   // Build full city object
   const key=slugify(cityName);
@@ -1173,7 +1258,7 @@ function ApiKeyPanel({acc,accB,onSaved,onCancel,showCancel}){
     if(!k.startsWith("sk-ant-")){setErr("Key should start with sk-ant-…");return;}
     setBusy(true);setErr("");
     try{
-      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":k,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:10,messages:[{role:"user",content:"hi"}]})});
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":k,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:ACTIVE_MODEL.id,max_tokens:10,messages:[{role:"user",content:"hi"}]})});
       if(r.status===401){setBusy(false);setErr("Invalid key — authentication failed.");return;}
     }catch(e){}
     localStorage.setItem(API_KEY_STORAGE,k);setBusy(false);onSaved(k);
@@ -1273,6 +1358,7 @@ function TranzitApp(){
   const [tokenStats, setTokenStats] = useState({used:0, saved:0, cityUsed:0});
   const [lastCached, setLastCached] = useState(false);
   const [lastCachedAge, setLastCachedAge] = useState("");
+  const [activeModel, setActiveModel] = useState(ACTIVE_MODEL);
 
   const [from,    setFrom]    = useState("");
   const [to,      setTo]      = useState("");
@@ -1386,7 +1472,11 @@ function TranzitApp(){
     const key=keyOverride||apiKey;
     setLoading(true);setAiError("");setRoutes([]);setSearched(false);setShowKeyPanel(false);setEditingKey(false);setLastCached(false);
     try{
-      const result=await fetchAIRoutes(city,from.trim(),to.trim(),key,(ts)=>setTokenStats({...ts}));
+      const result=await fetchAIRoutes(
+        city,from.trim(),to.trim(),key,
+        (ts)=>setTokenStats({...ts}),
+        (m)=>setActiveModel({...m})
+      );
       setRoutes(result.routes);setSelRoute(0);setSearched(true);
       setLastCached(result.fromCache||false);
       setLastCachedAge(result.cacheAge||"");
@@ -2030,17 +2120,18 @@ function TranzitApp(){
             </div>
           </div>
           <div style={{width:1,height:28,background:C.border,margin:"0 10px"}}/>
-          <div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:12}}>💾</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em"}}>SAVED ROUTES</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:Object.keys(ROUTE_CACHE).length>0?acc:C.muted}}>
-                {Object.keys(ROUTE_CACHE).length} routes
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:5}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:C.emerald,animation:"pulse 2s infinite",flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.06em"}}>MODEL</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,color:accB,
+                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                {activeModel.label}
               </div>
             </div>
             {Object.keys(ROUTE_CACHE).length>0&&(
-              <button onClick={()=>{Object.keys(ROUTE_CACHE).forEach(k=>delete ROUTE_CACHE[k]);localStorage.removeItem(ROUTE_CACHE_STORAGE);setTokenStats({...TOKEN_SESSION});}} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:5,padding:"2px 6px",cursor:"pointer",color:C.muted,fontSize:9}}>
-                Clear
+              <button onClick={()=>{Object.keys(ROUTE_CACHE).forEach(k=>delete ROUTE_CACHE[k]);localStorage.removeItem(ROUTE_CACHE_STORAGE);setTokenStats({...TOKEN_SESSION});}} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:5,padding:"2px 5px",cursor:"pointer",color:C.muted,fontSize:8,flexShrink:0}}>
+                🗑️
               </button>
             )}
           </div>
@@ -2089,6 +2180,22 @@ function TranzitApp(){
 
         {/* Attribution Footer */}
         <div style={{borderTop:`1px solid ${C.border}`,padding:"8px 16px 14px",textAlign:"center"}}>
+          {/* AI Model version badge */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:6}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,
+              background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,
+              borderRadius:8,padding:"4px 10px"}}>
+              <div style={{width:6,height:6,borderRadius:"50%",background:C.emerald,
+                animation:"pulse 2s infinite",flexShrink:0}}/>
+              <span style={{fontSize:9,color:C.muted,letterSpacing:"0.08em"}}>AI ENGINE</span>
+              <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",fontWeight:600,
+                color:accB}}>Claude {activeModel.label}</span>
+              {activeModel.id!==MODEL_CHAIN[0].id&&(
+                <span style={{fontSize:8,background:`${acc}22`,color:acc,
+                  borderRadius:4,padding:"1px 5px",letterSpacing:"0.06em"}}>FALLBACK</span>
+              )}
+            </div>
+          </div>
           <div style={{fontSize:10,color:C.muted,lineHeight:1.7}}>
             Designed by <span style={{color:acc,fontWeight:600}}>Krishnamurthy Kandregula</span> · Made by <span style={{color:accB,fontWeight:600}}>Claude</span>
           </div>
