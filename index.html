@@ -6,6 +6,50 @@
   <title>Tranzit — Global Commute Intelligence</title>
   <meta name="description" content="AI-powered multi-modal transit routing for cities worldwide"/>
   <meta name="theme-color" content="#FF6B1A"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Tranzit"/>
+  <!-- PWA icon generated via canvas -->
+  <script>
+    (function(){
+      var c=document.createElement("canvas");c.width=512;c.height=512;
+      var x=c.getContext("2d");
+      // Background
+      var g=x.createLinearGradient(0,0,512,512);
+      g.addColorStop(0,"#0A0A0F");g.addColorStop(1,"#1A1A28");
+      x.fillStyle=g;x.beginPath();x.roundRect(0,0,512,512,96);x.fill();
+      // Outer glow ring
+      var rg=x.createRadialGradient(256,256,80,256,256,260);
+      rg.addColorStop(0,"rgba(255,107,26,0.18)");rg.addColorStop(1,"rgba(255,107,26,0)");
+      x.fillStyle=rg;x.fillRect(0,0,512,512);
+      // T lettermark
+      var tg=x.createLinearGradient(100,140,420,380);
+      tg.addColorStop(0,"#FF6B1A");tg.addColorStop(1,"#F5A623");
+      x.fillStyle=tg;
+      // Horizontal bar of T
+      x.beginPath();x.roundRect(90,130,332,72,18);x.fill();
+      // Vertical stem of T
+      x.beginPath();x.roundRect(210,130,92,252,18);x.fill();
+      // Route dots — three small circles below
+      [156,256,356].forEach(function(cx,i){
+        x.beginPath();x.arc(cx,420,18,0,Math.PI*2);
+        x.fillStyle=i===1?"#F5A623":"rgba(255,107,26,0.5)";x.fill();
+      });
+      // Connecting line between dots
+      x.strokeStyle="rgba(245,166,35,0.4)";x.lineWidth=6;x.lineCap="round";
+      x.beginPath();x.moveTo(174,420);x.lineTo(238,420);x.stroke();
+      x.beginPath();x.moveTo(274,420);x.lineTo(338,420);x.stroke();
+      var url=c.toDataURL("image/png");
+      // Favicon
+      var lnk=document.createElement("link");lnk.rel="icon";lnk.type="image/png";lnk.href=url;document.head.appendChild(lnk);
+      // Apple touch icon
+      var al=document.createElement("link");al.rel="apple-touch-icon";al.href=url;document.head.appendChild(al);
+      // PWA manifest blob
+      var manifest={name:"Tranzit",short_name:"Tranzit",start_url:".",display:"standalone",background_color:"#0A0A0F",theme_color:"#FF6B1A",icons:[{src:url,sizes:"512x512",type:"image/png"}]};
+      var mb=new Blob([JSON.stringify(manifest)],{type:"application/json"});
+      var ml=document.createElement("link");ml.rel="manifest";ml.href=URL.createObjectURL(mb);document.head.appendChild(ml);
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -128,23 +172,265 @@ const COUNTRY_FLAGS = {
 
 // ── BUILT-IN CITY DB ──────────────────────────────────────────────────────────
 const BUILTIN_CITIES = {
-  hyderabad:{name:"Hyderabad",country:"India",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8}],stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],alerts:[{type:"warn",msg:"Metro Blue Line delayed 8 min — signal fault near Ameerpet"},{type:"info",msg:"TSRTC 216K running on alternate route via Banjara Hills"},{type:"safe",msg:"Safe Zone active: Women's coach M3 verified occupied"},{type:"crowd",msg:"Secunderabad platform 3 crowd HIGH — suggest M2 coach"}],budget:[58,95,40,78,112,35,0],monthlyBudget:2400},
-  mumbai:{name:"Mumbai",country:"India",flag:"🇮🇳",currency:"₹",code:"BOM",accent:"#0066CC",accentB:"#00AAFF",timezone:"IST",transitLabel:"Mumbai Local & Metro",defaultFrom:"Andheri",defaultTo:"Churchgate",popularRoutes:[["Andheri","Churchgate"],["Bandra","CST"],["Borivali","Dadar"],["Kurla","Thane"]],lines:[{line:"Western",route:"Churchgate ↔ Dahanu Road",status:"On Time",trains:22},{line:"Central",route:"CST ↔ Kasara / Panvel",status:"Delayed",trains:20},{line:"Harbour",route:"CST ↔ Panvel",status:"On Time",trains:14}],stations:[{stn:"Dadar",pct:96,dir:"Western + Central interchange"},{stn:"Andheri",pct:84,dir:"Western Line"},{stn:"Kurla",pct:79,dir:"Central + Metro interchange"},{stn:"Bandra",pct:61,dir:"Western Line"}],alerts:[{type:"warn",msg:"Central Line delayed 12 min — track maintenance near Thane"},{type:"info",msg:"AC Local on platform 7 instead of 4 — Churchgate"},{type:"safe",msg:"Women's special 7:45 AM fast from Borivali platform 2"},{type:"crowd",msg:"Dadar station crowd RED — use foot overbridge exit 3"}],budget:[30,62,30,45,88,30,0],monthlyBudget:1800},
-  delhi:{name:"Delhi",country:"India",flag:"🇮🇳",currency:"₹",code:"DEL",accent:"#8B0000",accentB:"#CC3300",timezone:"IST",transitLabel:"Delhi Metro (DMRC)",defaultFrom:"Dwarka Sec 21",defaultTo:"Connaught Place",popularRoutes:[["Dwarka Sec 21","Connaught Place"],["Noida Sec 18","Rajiv Chowk"],["Gurgaon","Hauz Khas"],["Rohini","Chandni Chowk"]],lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12}],stations:[{stn:"Rajiv Chowk",pct:93,dir:"Yellow + Blue interchange"},{stn:"Kashmere Gate",pct:77,dir:"Red + Yellow + Violet"},{stn:"Hauz Khas",pct:55,dir:"Yellow + Magenta interchange"},{stn:"Noida Sector 18",pct:62,dir:"Blue Line terminus area"}],alerts:[{type:"warn",msg:"Red Line delay 15 min — Kashmere Gate to Dilshad Garden"},{type:"info",msg:"AQI 187 (Moderate) — Metro recommended over outdoor options"},{type:"safe",msg:"Pink coach active on all Yellow Line trains till 9 PM"},{type:"crowd",msg:"Rajiv Chowk gate 7 queue 20 min — use gate 2 instead"}],budget:[70,50,95,50,140,50,0],monthlyBudget:2200},
-  london:{name:"London",country:"United Kingdom",flag:"🇬🇧",currency:"£",code:"LON",accent:"#E40000",accentB:"#FF6666",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],lines:[{line:"Central",route:"West Ruislip ↔ Epping",status:"On Time",trains:16},{line:"Elizabeth",route:"Reading ↔ Shenfield / Abbey",status:"On Time",trains:14},{line:"Northern",route:"Morden ↔ Edgware / Mill Hill",status:"Delayed",trains:18}],stations:[{stn:"King's Cross",pct:82,dir:"6 lines interchange"},{stn:"Bank/Monument",pct:75,dir:"Central + Waterloo + City"},{stn:"Paddington",pct:58,dir:"Elizabeth + Bakerloo + Circle"},{stn:"Liverpool St",pct:69,dir:"Central + Elizabeth + Overground"}],alerts:[{type:"warn",msg:"Northern Line severe delays — signal failure at Camden Town"},{type:"info",msg:"Elizabeth Line running 4 extra trains/hr during rush hour"},{type:"safe",msg:"Night Tube active Fri–Sat: Central, Jubilee, Northern, Victoria"},{type:"crowd",msg:"King's Cross gateline queues 15 min — use York Way entrance"}],budget:[8.2,12.5,6.8,14.0,18.5,4.2,0],monthlyBudget:180},
-  singapore:{name:"Singapore",country:"Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#CC0001",accentB:"#FF4444",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10}],stations:[{stn:"City Hall",pct:78,dir:"NS + EW interchange"},{stn:"Raffles Place",pct:84,dir:"NS + EW CBD core"},{stn:"Dhoby Ghaut",pct:61,dir:"NS + NE + Circle"},{stn:"Jurong East",pct:55,dir:"NS + EW + 2 malls"}],alerts:[{type:"warn",msg:"Circle Line reduced frequency — train fault at Promenade"},{type:"info",msg:"Bus 65 express service added on weekday peak from Tampines"},{type:"safe",msg:"SMRT staff at Raffles Place for crowd management 8–9 AM"},{type:"crowd",msg:"City Hall exit C crowded — use Raffles City mall exit"}],budget:[5.2,8.0,4.5,6.8,14.0,3.2,0],monthlyBudget:120},
-  dubai:{name:"Dubai",country:"UAE",flag:"🇦🇪",currency:"AED",code:"DXB",accent:"#C79A00",accentB:"#FFD700",timezone:"GST",transitLabel:"RTA Dubai Metro",defaultFrom:"DMCC (JLT)",defaultTo:"Dubai Airport T3",popularRoutes:[["DMCC (JLT)","Dubai Airport T3"],["Dubai Marina","Mall of the Emirates"],["Deira City Centre","BurJuman"],["Union","Dubai Mall / Burj Khalifa"]],lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6}],stations:[{stn:"Union",pct:72,dir:"Red + Green interchange"},{stn:"DMCC",pct:65,dir:"JLT / Marina area"},{stn:"Dubai Mall",pct:88,dir:"Near Burj Khalifa"},{stn:"Airport T3",pct:55,dir:"DXB Terminal 3"}],alerts:[{type:"info",msg:"Gold class carriages available on all Red Line — AED 20 upgrade"},{type:"warn",msg:"Dubai Mall station crowded during sale season — allow 15 min extra"},{type:"safe",msg:"Women & children carriage at front of every train — enforced"},{type:"info",msg:"Nol card top-up at all metro stations and LuLu Hypermarkets"}],budget:[15,25,12,35,18,8,0],monthlyBudget:400},
-  newyork:{name:"New York",country:"United States",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#0039A6",accentB:"#FF6319",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10}],stations:[{stn:"Times Sq–42 St",pct:91,dir:"Busiest station globally"},{stn:"Grand Central",pct:83,dir:"4/5/6/7 + Metro-North"},{stn:"Union Square",pct:74,dir:"4/5/6/N/Q/R/W/L"},{stn:"Atlantic Ave",pct:66,dir:"Brooklyn interchange hub"}],alerts:[{type:"warn",msg:"4 train running express — skipping 51st, 68th, 77th St"},{type:"info",msg:"OMNY contactless accepted on all buses and subways"},{type:"crowd",msg:"Times Square gridlock — use 42nd St Bryant Park as alternate"},{type:"info",msg:"L train weekend suspended Canarsie–Jefferson: Q shuttle active"}],budget:[7.8,11.5,8.0,22.0,14.5,5.8,0],monthlyBudget:200},
-  tokyo:{name:"Tokyo",country:"Japan",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#BC002D",accentB:"#FF6B81",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],lines:[{line:"Ginza",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14},{line:"Yamanote",route:"Loop (30 stations)",status:"On Time",trains:20},{line:"Chuo",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16}],stations:[{stn:"Shinjuku",pct:96,dir:"World's busiest station"},{stn:"Shibuya",pct:88,dir:"Multiple lines + Scramble"},{stn:"Tokyo",pct:77,dir:"Shinkansen + Yamanote hub"},{stn:"Ikebukuro",pct:80,dir:"Yamanote + Fukutoshin"}],alerts:[{type:"warn",msg:"Chuo Line 4 min late — door malfunction at Koenji"},{type:"info",msg:"Suica/Pasmo IC card required — no cash on Tokyo Metro"},{type:"safe",msg:"Women-only carriages active 7–9 AM and 5–9 PM on all Metro"},{type:"crowd",msg:"Shinjuku South Exit — avoid 8:10–8:40 during peak surge"}],budget:[540,680,400,820,1200,300,0],monthlyBudget:15000},
-  sydney:{name:"Sydney",country:"Australia",flag:"🇦🇺",currency:"A$",code:"SYD",accent:"#00843D",accentB:"#FFD700",timezone:"AEST",transitLabel:"Transport for NSW",defaultFrom:"Bondi Junction",defaultTo:"Wynyard (CBD)",popularRoutes:[["Bondi Junction","Wynyard (CBD)"],["Parramatta","Central"],["Chatswood","Circular Quay"],["Liverpool","Town Hall"]],lines:[{line:"T1 North Shore",route:"Central ↔ Berowra / Richmond",status:"On Time",trains:10},{line:"T4 Eastern Sub",route:"Bondi Jn ↔ Waterfall",status:"Delayed",trains:8},{line:"L2/L3 Kingsford",route:"Circular Quay ↔ Randwick",status:"On Time",trains:6}],stations:[{stn:"Central",pct:79,dir:"All lines + intercity"},{stn:"Town Hall",pct:72,dir:"T1/T2/T3/T4/T8"},{stn:"Wynyard",pct:65,dir:"T1/T2/T3 + Buses"},{stn:"Circular Quay",pct:58,dir:"Trains + Ferries + Light Rail"}],alerts:[{type:"warn",msg:"T4 Eastern Suburbs delays — track work Bondi Junction to Museum"},{type:"info",msg:"Opal card tap on/off required — daily cap A$16.80 weekdays"},{type:"safe",msg:"Transport officers at Central 7:30–9 AM for passenger safety"},{type:"info",msg:"Ferry F1 Manly — extra service Fri 5:30 PM from Circular Quay"}],budget:[8,14,7,22,12,5,0],monthlyBudget:250},
+  hyderabad:{name:"Hyderabad",country:"India",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],
+    coaches:[{l:"M1",p:78,special:false},{l:"M2",p:65,special:false},{l:"M3 ♀",p:55,special:true,note:"Women only"}],
+    lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14,freqMins:4},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11,freqMins:6},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8,freqMins:8}],
+    stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],
+    alerts:[{type:"warn",msg:"Metro Blue Line delayed 8 min — signal fault near Ameerpet"},{type:"info",msg:"TSRTC 216K running on alternate route via Banjara Hills"},{type:"safe",msg:"Safe Zone active: Women's coach M3 verified occupied"},{type:"crowd",msg:"Secunderabad platform 3 crowd HIGH — suggest M2 coach"}]},
+  mumbai:{name:"Mumbai",country:"India",flag:"🇮🇳",currency:"₹",code:"BOM",accent:"#0066CC",accentB:"#00AAFF",timezone:"IST",transitLabel:"Mumbai Local & Metro",defaultFrom:"Andheri",defaultTo:"Churchgate",popularRoutes:[["Andheri","Churchgate"],["Bandra","CST"],["Borivali","Dadar"],["Kurla","Thane"]],
+    coaches:[{l:"C1 ♀",p:72,special:true,note:"Ladies"},{l:"C2",p:88,special:false},{l:"C3",p:91,special:false},{l:"C4",p:84,special:false},{l:"C5",p:79,special:false},{l:"C6",p:65,special:false},{l:"C7",p:70,special:false},{l:"C8",p:55,special:false},{l:"C9 ♀",p:60,special:true,note:"Ladies"}],
+    lines:[{line:"Western",route:"Churchgate ↔ Dahanu Road",status:"On Time",trains:22,freqMins:3},{line:"Central",route:"CST ↔ Kasara / Panvel",status:"Delayed",trains:20,freqMins:4},{line:"Harbour",route:"CST ↔ Panvel",status:"On Time",trains:14,freqMins:6}],
+    stations:[{stn:"Dadar",pct:96,dir:"Western + Central interchange"},{stn:"Andheri",pct:84,dir:"Western Line"},{stn:"Kurla",pct:79,dir:"Central + Metro interchange"},{stn:"Bandra",pct:61,dir:"Western Line"}],
+    alerts:[{type:"warn",msg:"Central Line delayed 12 min — track maintenance near Thane"},{type:"info",msg:"AC Local on platform 7 instead of 4 — Churchgate"},{type:"safe",msg:"Women's special 7:45 AM fast from Borivali platform 2"},{type:"crowd",msg:"Dadar station crowd RED — use foot overbridge exit 3"}]},
+  delhi:{name:"Delhi",country:"India",flag:"🇮🇳",currency:"₹",code:"DEL",accent:"#8B0000",accentB:"#CC3300",timezone:"IST",transitLabel:"Delhi Metro (DMRC)",defaultFrom:"Dwarka Sec 21",defaultTo:"Connaught Place",popularRoutes:[["Dwarka Sec 21","Connaught Place"],["Noida Sec 18","Rajiv Chowk"],["Gurgaon","Hauz Khas"],["Rohini","Chandni Chowk"]],
+    coaches:[{l:"C1 ♀",p:58,special:true,note:"Pink Coach"},{l:"C2",p:88,special:false},{l:"C3",p:76,special:false},{l:"C4",p:93,special:false},{l:"C5",p:69,special:false},{l:"C6",p:52,special:false}],
+    lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18,freqMins:4},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22,freqMins:3},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12,freqMins:7}],
+    stations:[{stn:"Rajiv Chowk",pct:93,dir:"Yellow + Blue interchange"},{stn:"Kashmere Gate",pct:77,dir:"Red + Yellow + Violet"},{stn:"Hauz Khas",pct:55,dir:"Yellow + Magenta interchange"},{stn:"Noida Sector 18",pct:62,dir:"Blue Line terminus area"}],
+    alerts:[{type:"warn",msg:"Red Line delay 15 min — Kashmere Gate to Dilshad Garden"},{type:"info",msg:"AQI 187 (Moderate) — Metro recommended over outdoor options"},{type:"safe",msg:"Pink coach active on all Yellow Line trains till 9 PM"},{type:"crowd",msg:"Rajiv Chowk gate 7 queue 20 min — use gate 2 instead"}]},
+  london:{name:"London",country:"United Kingdom",flag:"🇬🇧",currency:"£",code:"LON",accent:"#E40000",accentB:"#FF6666",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],
+    coaches:[{l:"Car 1",p:82,special:false},{l:"Car 2",p:75,special:false},{l:"Car 3",p:68,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:73,special:false},{l:"Car 6",p:61,special:false},{l:"Car 7",p:55,special:false},{l:"Car 8",p:48,special:false}],
+    lines:[{line:"Central Line",route:"West Ruislip ↔ Epping",status:"On Time",trains:16,freqMins:3},{line:"Elizabeth Line",route:"Reading ↔ Shenfield / Abbey",status:"On Time",trains:14,freqMins:5},{line:"Northern Line",route:"Morden ↔ Edgware / Mill Hill",status:"Delayed",trains:18,freqMins:4}],
+    stations:[{stn:"King's Cross",pct:82,dir:"6 lines interchange"},{stn:"Bank/Monument",pct:75,dir:"Central + Waterloo + City"},{stn:"Paddington",pct:58,dir:"Elizabeth + Bakerloo + Circle"},{stn:"Liverpool St",pct:69,dir:"Central + Elizabeth + Overground"}],
+    alerts:[{type:"warn",msg:"Northern Line severe delays — signal failure at Camden Town"},{type:"info",msg:"Elizabeth Line running 4 extra trains/hr during rush hour"},{type:"safe",msg:"Night Tube active Fri–Sat: Central, Jubilee, Northern, Victoria"},{type:"crowd",msg:"King's Cross gateline queues 15 min — use York Way entrance"}]},
+  singapore:{name:"Singapore",country:"Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#CC0001",accentB:"#FF4444",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],
+    coaches:[{l:"Car 1",p:78,special:false},{l:"Car 2",p:84,special:false},{l:"Car 3",p:61,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:55,special:false},{l:"Car 6",p:43,special:false}],
+    lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16,freqMins:4},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20,freqMins:3},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10,freqMins:7}],
+    stations:[{stn:"City Hall",pct:78,dir:"NS + EW interchange"},{stn:"Raffles Place",pct:84,dir:"NS + EW CBD core"},{stn:"Dhoby Ghaut",pct:61,dir:"NS + NE + Circle"},{stn:"Jurong East",pct:55,dir:"NS + EW + 2 malls"}],
+    alerts:[{type:"warn",msg:"Circle Line reduced frequency — train fault at Promenade"},{type:"info",msg:"Bus 65 express service added on weekday peak from Tampines"},{type:"safe",msg:"SMRT staff at Raffles Place for crowd management 8–9 AM"},{type:"crowd",msg:"City Hall exit C crowded — use Raffles City mall exit"}]},
+  dubai:{name:"Dubai",country:"UAE",flag:"🇦🇪",currency:"AED",code:"DXB",accent:"#C79A00",accentB:"#FFD700",timezone:"GST",transitLabel:"RTA Dubai Metro",defaultFrom:"DMCC (JLT)",defaultTo:"Dubai Airport T3",popularRoutes:[["DMCC (JLT)","Dubai Airport T3"],["Dubai Marina","Mall of the Emirates"],["Deira City Centre","BurJuman"],["Union","Dubai Mall / Burj Khalifa"]],
+    coaches:[{l:"Gold ★",p:35,special:true,note:"Gold Class"},{l:"Silver 1",p:68,special:false},{l:"Silver 2",p:75,special:false},{l:"Silver 3",p:82,special:false},{l:"♀ Only",p:52,special:true,note:"Women & Children"}],
+    lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12,freqMins:5},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8,freqMins:7},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6,freqMins:10}],
+    stations:[{stn:"Union",pct:72,dir:"Red + Green interchange"},{stn:"DMCC",pct:65,dir:"JLT / Marina area"},{stn:"Dubai Mall",pct:88,dir:"Near Burj Khalifa"},{stn:"Airport T3",pct:55,dir:"DXB Terminal 3"}],
+    alerts:[{type:"info",msg:"Gold class carriages available on all Red Line — AED 20 upgrade"},{type:"warn",msg:"Dubai Mall station crowded during sale season — allow 15 min extra"},{type:"safe",msg:"Women & children carriage at front of every train — enforced"},{type:"info",msg:"Nol card top-up at all metro stations and LuLu Hypermarkets"}]},
+  newyork:{name:"New York",country:"United States",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#0039A6",accentB:"#FF6319",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],
+    coaches:[{l:"Car 1",p:91,special:false},{l:"Car 2",p:83,special:false},{l:"Car 3",p:76,special:false},{l:"Car 4",p:88,special:false},{l:"Car 5",p:70,special:false},{l:"Car 6",p:65,special:false},{l:"Car 7",p:58,special:false},{l:"Car 8",p:44,special:false}],
+    lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24,freqMins:4},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20,freqMins:5},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10,freqMins:8}],
+    stations:[{stn:"Times Sq–42 St",pct:91,dir:"Busiest station globally"},{stn:"Grand Central",pct:83,dir:"4/5/6/7 + Metro-North"},{stn:"Union Square",pct:74,dir:"4/5/6/N/Q/R/W/L"},{stn:"Atlantic Ave",pct:66,dir:"Brooklyn interchange hub"}],
+    alerts:[{type:"warn",msg:"4 train running express — skipping 51st, 68th, 77th St"},{type:"info",msg:"OMNY contactless accepted on all buses and subways"},{type:"crowd",msg:"Times Square gridlock — use 42nd St Bryant Park as alternate"},{type:"info",msg:"L train weekend suspended Canarsie–Jefferson: Q shuttle active"}]},
+  tokyo:{name:"Tokyo",country:"Japan",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#BC002D",accentB:"#FF6B81",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],
+    coaches:[{l:"1号車",p:88,special:false},{l:"2号車",p:82,special:false},{l:"3号車",p:75,special:false},{l:"4号車 ♀",p:60,special:true,note:"Women only rush hours"},{l:"5号車",p:91,special:false},{l:"6号車",p:78,special:false},{l:"7号車",p:70,special:false},{l:"8号車",p:65,special:false},{l:"9号車",p:55,special:false},{l:"10号車",p:48,special:false},{l:"11号車",p:42,special:false}],
+    lines:[{line:"Ginza Line",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14,freqMins:3},{line:"Yamanote Line",route:"Loop (30 stations)",status:"On Time",trains:20,freqMins:2},{line:"Chuo Line",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16,freqMins:5}],
+    stations:[{stn:"Shinjuku",pct:96,dir:"World's busiest station"},{stn:"Shibuya",pct:88,dir:"Multiple lines + Scramble"},{stn:"Tokyo",pct:77,dir:"Shinkansen + Yamanote hub"},{stn:"Ikebukuro",pct:80,dir:"Yamanote + Fukutoshin"}],
+    alerts:[{type:"warn",msg:"Chuo Line 4 min late — door malfunction at Koenji"},{type:"info",msg:"Suica/Pasmo IC card required — no cash on Tokyo Metro"},{type:"safe",msg:"Women-only carriages active 7–9 AM and 5–9 PM on all Metro"},{type:"crowd",msg:"Shinjuku South Exit — avoid 8:10–8:40 during peak surge"}]},
+  sydney:{name:"Sydney",country:"Australia",flag:"🇦🇺",currency:"A$",code:"SYD",accent:"#00843D",accentB:"#FFD700",timezone:"AEST",transitLabel:"Transport for NSW",defaultFrom:"Bondi Junction",defaultTo:"Wynyard (CBD)",popularRoutes:[["Bondi Junction","Wynyard (CBD)"],["Parramatta","Central"],["Chatswood","Circular Quay"],["Liverpool","Town Hall"]],
+    coaches:[{l:"Car 1",p:79,special:false},{l:"Car 2",p:72,special:false},{l:"Car 3",p:88,special:false},{l:"Car 4",p:65,special:false},{l:"Car 5",p:58,special:false},{l:"Car 6",p:81,special:false},{l:"Car 7",p:70,special:false},{l:"Car 8",p:45,special:false}],
+    lines:[{line:"T1 North Shore",route:"Central ↔ Berowra / Richmond",status:"On Time",trains:10,freqMins:7},{line:"T4 Eastern Sub",route:"Bondi Jn ↔ Waterfall",status:"Delayed",trains:8,freqMins:9},{line:"L2/L3 Kingsford",route:"Circular Quay ↔ Randwick",status:"On Time",trains:6,freqMins:10}],
+    stations:[{stn:"Central",pct:79,dir:"All lines + intercity"},{stn:"Town Hall",pct:72,dir:"T1/T2/T3/T4/T8"},{stn:"Wynyard",pct:65,dir:"T1/T2/T3 + Buses"},{stn:"Circular Quay",pct:58,dir:"Trains + Ferries + Light Rail"}],
+    alerts:[{type:"warn",msg:"T4 Eastern Suburbs delays — track work Bondi Junction to Museum"},{type:"info",msg:"Opal card tap on/off required — daily cap A$16.80 weekdays"},{type:"safe",msg:"Transport officers at Central 7:30–9 AM for passenger safety"},{type:"info",msg:"Ferry F1 Manly — extra service Fri 5:30 PM from Circular Quay"}]},
 };
 
-const DAYS=["M","T","W","T","F","S","S"];
+
 const crowdColor=p=>p>85?"#FF4466":p>65?"#F5A623":"#00D4AA";
 const alertIcon =t=>({warn:"⚠️",info:"ℹ️",safe:"🛡️",crowd:"👥"}[t]);
 const statusClr =s=>s==="On Time"?"#00D4AA":"#FF4466";
 const maskKey   =k=>k?`${k.slice(0,8)}${"•".repeat(12)}${k.slice(-4)}`:"";
 const slugify   =s=>s.toLowerCase().replace(/[^a-z0-9]/g,"_");
+
+// ── RIDE BOOKING HUB DATABASE ─────────────────────────────────────────────────
+const RIDE_APPS = {
+  "India":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"All India",
+     deep:"uber://?action=setPickup",
+     web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"Ola",        icon:"🟢",bg:"#1AAE3E",fg:"#ffffff",mode:"Cab/Auto",tag:"All India",
+     deep:"olacabs://booking",
+     web:"https://book.olacabs.com",
+     store:{ios:"https://apps.apple.com/app/ola/id539179365",android:"https://play.google.com/store/apps/details?id=com.olacabs.customer"}},
+    {name:"Rapido",     icon:"🟡",bg:"#FFCB05",fg:"#000000",mode:"Bike/Auto",tag:"Metro Cities",
+     deep:"rapido://open",
+     web:"https://rapido.bike",
+     store:{ios:"https://apps.apple.com/app/rapido-bike-auto/id1190466715",android:"https://play.google.com/store/apps/details?id=com.rapido.passenger"}},
+    {name:"Namma Yatri",icon:"🛺",bg:"#FF6B1A",fg:"#ffffff",mode:"Auto",    tag:"Bengaluru/Kochi",
+     deep:"",
+     web:"https://nammayatri.in",
+     store:{android:"https://play.google.com/store/apps/details?id=in.juspay.nammayatri"}},
+    {name:"InDrive",    icon:"🟣",bg:"#4A90D9",fg:"#ffffff",mode:"Cab",     tag:"Bid-your-fare",
+     deep:"indrive://",
+     web:"https://indrive.com",
+     store:{ios:"https://apps.apple.com/app/indrive/id1095022695",android:"https://play.google.com/store/apps/details?id=sinet.startup.inDriver"}},
+    {name:"BluSmart",   icon:"🔵",bg:"#1565C0",fg:"#ffffff",mode:"EV Cab",  tag:"Delhi/Bengaluru/Hyderabad",
+     deep:"",
+     web:"https://blu-smart.com",
+     store:{ios:"https://apps.apple.com/app/blusmart/id1481454626",android:"https://play.google.com/store/apps/details?id=com.blusmart.ridershapp"}},
+  ],
+  "United Kingdom":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Nationwide",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"Bolt",       icon:"🟢",bg:"#34D186",fg:"#000000",mode:"Cab",     tag:"Major Cities",
+     deep:"bolt://",web:"https://bolt.eu",
+     store:{ios:"https://apps.apple.com/app/bolt-request-a-ride/id675905000",android:"https://play.google.com/store/apps/details?id=ee.mtakso.client"}},
+    {name:"FREE NOW",   icon:"🟡",bg:"#FFD700",fg:"#000000",mode:"Cab/Black",tag:"London",
+     deep:"mytaxi://",web:"https://free-now.com",
+     store:{ios:"https://apps.apple.com/app/free-now/id357852748",android:"https://play.google.com/store/apps/details?id=com.mytaxi.android.driverapp"}},
+    {name:"Addison Lee", icon:"🔵",bg:"#003087",fg:"#ffffff",mode:"Executive",tag:"London",
+     deep:"",web:"https://www.addisonlee.com",
+     store:{ios:"https://apps.apple.com/app/addison-lee/id527144779",android:"https://play.google.com/store/apps/details?id=com.addisonlee.app"}},
+    {name:"Gett",       icon:"🔴",bg:"#E53935",fg:"#ffffff",mode:"Black Cab",tag:"London",
+     deep:"gett://",web:"https://gett.com",
+     store:{ios:"https://apps.apple.com/app/gett/id442438816",android:"https://play.google.com/store/apps/details?id=com.gettaxi.android"}},
+  ],
+  "United States":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Nationwide",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"Lyft",       icon:"🩷",bg:"#FF00BF",fg:"#ffffff",mode:"Cab",     tag:"Nationwide",
+     deep:"lyft://ridetype?id=lyft",web:"https://lyft.com",
+     store:{ios:"https://apps.apple.com/app/lyft/id529379082",android:"https://play.google.com/store/apps/details?id=me.lyft.android"}},
+    {name:"Via",        icon:"🟣",bg:"#6B3FA0",fg:"#ffffff",mode:"Shared Ride",tag:"NYC/Chicago",
+     deep:"",web:"https://ridewithvia.com",
+     store:{ios:"https://apps.apple.com/app/via-share-a-ride/id657679851",android:"https://play.google.com/store/apps/details?id=com.via.android"}},
+    {name:"Curb",       icon:"🟡",bg:"#F5A623",fg:"#000000",mode:"Yellow Cab",tag:"NYC",
+     deep:"curb://",web:"https://gocurb.com",
+     store:{ios:"https://apps.apple.com/app/curb-taxi-cab-app/id299226386",android:"https://play.google.com/store/apps/details?id=com.taxi.android"}},
+  ],
+  "Australia":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Nationwide",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"Ola",        icon:"🟢",bg:"#1AAE3E",fg:"#ffffff",mode:"Cab",     tag:"Major Cities",
+     deep:"olacabs://booking",web:"https://book.olacabs.com",
+     store:{ios:"https://apps.apple.com/app/ola/id539179365",android:"https://play.google.com/store/apps/details?id=com.olacabs.customer"}},
+    {name:"DiDi",       icon:"🟠",bg:"#FF5722",fg:"#ffffff",mode:"Cab",     tag:"Major Cities",
+     deep:"didi://",web:"https://didimobility.com.au",
+     store:{ios:"https://apps.apple.com/app/didi/id1235799009",android:"https://play.google.com/store/apps/details?id=com.didiglobal.passenger"}},
+    {name:"13cabs",     icon:"🟡",bg:"#FFD700",fg:"#000000",mode:"Taxi",    tag:"Nationwide",
+     deep:"",web:"https://13cabs.com.au",
+     store:{ios:"https://apps.apple.com/app/13cabs/id569395379",android:"https://play.google.com/store/apps/details?id=au.com.13cabs.passenger"}},
+  ],
+  "UAE":[
+    {name:"Careem",     icon:"🟢",bg:"#1DBF73",fg:"#ffffff",mode:"Cab",     tag:"All UAE",
+     deep:"careem://",web:"https://careem.com",
+     store:{ios:"https://apps.apple.com/app/careem/id592978487",android:"https://play.google.com/store/apps/details?id=com.careem.acma"}},
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"All UAE",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"inDriver",   icon:"🔵",bg:"#1565C0",fg:"#ffffff",mode:"Bid Cab", tag:"Dubai/Abu Dhabi",
+     deep:"indrive://",web:"https://indrive.com",
+     store:{ios:"https://apps.apple.com/app/indrive/id1095022695",android:"https://play.google.com/store/apps/details?id=sinet.startup.inDriver"}},
+    {name:"RTA Dubai",  icon:"🟡",bg:"#006C35",fg:"#ffffff",mode:"Official Taxi",tag:"Dubai",
+     deep:"",web:"https://www.rta.ae/wps/portal/rta/ae/public-transport/taxis",
+     store:{ios:"https://apps.apple.com/app/hala-taxi/id476094978",android:"https://play.google.com/store/apps/details?id=com.rta.halataxi"}},
+  ],
+  "Singapore":[
+    {name:"Grab",       icon:"🟢",bg:"#00B14F",fg:"#ffffff",mode:"Cab/Bike", tag:"All Singapore",
+     deep:"grab://open?screenType=BOOKING",web:"https://grab.com",
+     store:{ios:"https://apps.apple.com/app/grab/id647268330",android:"https://play.google.com/store/apps/details?id=com.grabtaxi.passenger"}},
+    {name:"Gojek",      icon:"🔴",bg:"#EE2E24",fg:"#ffffff",mode:"Cab/Bike", tag:"All Singapore",
+     deep:"gojek://",web:"https://gojek.com",
+     store:{ios:"https://apps.apple.com/app/gojek/id944875099",android:"https://play.google.com/store/apps/details?id=com.gojek.app"}},
+    {name:"TADA",       icon:"🔵",bg:"#3D5AFE",fg:"#ffffff",mode:"Cab",     tag:"No surge pricing",
+     deep:"",web:"https://tada.global",
+     store:{ios:"https://apps.apple.com/app/tada/id1444333228",android:"https://play.google.com/store/apps/details?id=io.mvlchain.tada"}},
+    {name:"ComfortDelGro",icon:"🟡",bg:"#FFD700",fg:"#000",mode:"Taxi",    tag:"Official Taxi",
+     deep:"",web:"https://www.cdgtaxi.com.sg",
+     store:{ios:"https://apps.apple.com/app/cdg-zig/id542545831",android:"https://play.google.com/store/apps/details?id=sg.com.comfortdelgro.taxi"}},
+  ],
+  "Japan":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Major Cities",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"GO Taxi",    icon:"🔵",bg:"#0055B3",fg:"#ffffff",mode:"Taxi",    tag:"Nationwide",
+     deep:"",web:"https://go.goinc.jp",
+     store:{ios:"https://apps.apple.com/jp/app/go/id1014099354",android:"https://play.google.com/store/apps/details?id=jp.goinc.go"}},
+    {name:"DiDi JP",    icon:"🟠",bg:"#FF5722",fg:"#ffffff",mode:"Cab",     tag:"Major Cities",
+     deep:"didi://",web:"https://web.didiglobal.com/jp",
+     store:{ios:"https://apps.apple.com/jp/app/didi/id1235799009",android:"https://play.google.com/store/apps/details?id=com.didiglobal.passenger"}},
+  ],
+  "South Korea":[
+    {name:"Kakao T",    icon:"🟡",bg:"#FAE100",fg:"#000000",mode:"Taxi/Bike",tag:"Nationwide",
+     deep:"kakaot://",web:"https://kakaomobility.com",
+     store:{ios:"https://apps.apple.com/app/kakao-t/id981110422",android:"https://play.google.com/store/apps/details?id=com.kakao.taxi"}},
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Seoul",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+  ],
+  "Thailand":[
+    {name:"Grab",       icon:"🟢",bg:"#00B14F",fg:"#ffffff",mode:"Cab/Bike",tag:"All Thailand",
+     deep:"grab://open?screenType=BOOKING",web:"https://grab.com",
+     store:{ios:"https://apps.apple.com/app/grab/id647268330",android:"https://play.google.com/store/apps/details?id=com.grabtaxi.passenger"}},
+    {name:"Bolt",       icon:"🟢",bg:"#34D186",fg:"#000",mode:"Cab",       tag:"Bangkok",
+     deep:"bolt://",web:"https://bolt.eu",
+     store:{ios:"https://apps.apple.com/app/bolt/id675905000",android:"https://play.google.com/store/apps/details?id=ee.mtakso.client"}},
+  ],
+  "Indonesia":[
+    {name:"Gojek",      icon:"🔴",bg:"#EE2E24",fg:"#ffffff",mode:"Cab/Bike",tag:"All Indonesia",
+     deep:"gojek://",web:"https://gojek.com",
+     store:{ios:"https://apps.apple.com/app/gojek/id944875099",android:"https://play.google.com/store/apps/details?id=com.gojek.app"}},
+    {name:"Grab",       icon:"🟢",bg:"#00B14F",fg:"#ffffff",mode:"Cab/Bike",tag:"Major Cities",
+     deep:"grab://open?screenType=BOOKING",web:"https://grab.com",
+     store:{ios:"https://apps.apple.com/app/grab/id647268330",android:"https://play.google.com/store/apps/details?id=com.grabtaxi.passenger"}},
+  ],
+  "Malaysia":[
+    {name:"Grab",       icon:"🟢",bg:"#00B14F",fg:"#ffffff",mode:"Cab/Bike",tag:"All Malaysia",
+     deep:"grab://open?screenType=BOOKING",web:"https://grab.com",
+     store:{ios:"https://apps.apple.com/app/grab/id647268330",android:"https://play.google.com/store/apps/details?id=com.grabtaxi.passenger"}},
+    {name:"AirAsia Ride",icon:"🔴",bg:"#D32F2F",fg:"#ffffff",mode:"Cab",   tag:"KL / Penang",
+     deep:"",web:"https://www.airasia.com/ride",
+     store:{ios:"https://apps.apple.com/app/airasia/id466353073",android:"https://play.google.com/store/apps/details?id=com.airasia.mobile"}},
+  ],
+  "Brazil":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Nationwide",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"99",         icon:"🟡",bg:"#FFB900",fg:"#000",mode:"Cab/Moto",  tag:"Nationwide",
+     deep:"",web:"https://99app.com",
+     store:{ios:"https://apps.apple.com/app/99-mobilidade-urbana/id553663185",android:"https://play.google.com/store/apps/details?id=com.taxis99"}},
+    {name:"inDriver",   icon:"🔵",bg:"#4A90D9",fg:"#fff",mode:"Bid Cab",   tag:"Major Cities",
+     deep:"indrive://",web:"https://indrive.com",
+     store:{ios:"https://apps.apple.com/app/indrive/id1095022695",android:"https://play.google.com/store/apps/details?id=sinet.startup.inDriver"}},
+  ],
+  "Germany":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Major Cities",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"FREE NOW",   icon:"🟡",bg:"#FFD700",fg:"#000",mode:"Taxi",      tag:"Nationwide",
+     deep:"mytaxi://",web:"https://free-now.com",
+     store:{ios:"https://apps.apple.com/app/free-now/id357852748",android:"https://play.google.com/store/apps/details?id=com.mytaxi.android.driverapp"}},
+    {name:"Bolt",       icon:"🟢",bg:"#34D186",fg:"#000",mode:"Cab",       tag:"Major Cities",
+     deep:"bolt://",web:"https://bolt.eu",
+     store:{ios:"https://apps.apple.com/app/bolt/id675905000",android:"https://play.google.com/store/apps/details?id=ee.mtakso.client"}},
+  ],
+  "_default":[
+    {name:"Uber",       icon:"⚫",bg:"#000000",fg:"#ffffff",mode:"Cab",     tag:"Available Worldwide",
+     deep:"uber://?action=setPickup",web:"https://m.uber.com/looking",
+     store:{ios:"https://apps.apple.com/app/uber/id368677368",android:"https://play.google.com/store/apps/details?id=com.ubercab"}},
+    {name:"Bolt",       icon:"🟢",bg:"#34D186",fg:"#000000",mode:"Cab",    tag:"80+ Countries",
+     deep:"bolt://",web:"https://bolt.eu",
+     store:{ios:"https://apps.apple.com/app/bolt/id675905000",android:"https://play.google.com/store/apps/details?id=ee.mtakso.client"}},
+    {name:"inDriver",   icon:"🔵",bg:"#4A90D9",fg:"#ffffff",mode:"Bid Cab",tag:"47 Countries",
+     deep:"indrive://",web:"https://indrive.com",
+     store:{ios:"https://apps.apple.com/app/indrive/id1095022695",android:"https://play.google.com/store/apps/details?id=sinet.startup.inDriver"}},
+  ],
+};
+
+// Ride mode keywords — route label matching
+const RIDE_MODES = ["cab","taxi","auto","bike","uber","ola","grab","careem","lyft","bolt","rapido","ride","rickshaw","tuk"];
+const isRideRoute = r => RIDE_MODES.some(m => (r.label||"").toLowerCase().includes(m) || (r.via||"").toLowerCase().includes(m));
+
+// Deep link launcher with app-store fallback
+function launchRideApp(app, dest) {
+  const destEnc = encodeURIComponent(dest||"");
+  let deep = app.deep;
+  if (deep) {
+    // Append destination where supported
+    if (deep.includes("uber://")) deep += `&dropoff[nickname]=${destEnc}`;
+    if (deep.includes("grab://")) deep += `&dropName=${destEnc}`;
+    const start = Date.now();
+    window.location.href = deep;
+    setTimeout(() => {
+      if (Date.now() - start < 2000) {
+        // App didn't open — go to store
+        const ua = navigator.userAgent;
+        const url = /iPhone|iPad|iPod/.test(ua) ? (app.store?.ios||app.web) : (app.store?.android||app.web);
+        window.open(url, "_blank");
+      }
+    }, 1500);
+  } else {
+    window.open(app.web, "_blank");
+  }
+}
 
 const C={bg:"#0A0A0F",surface:"#12121A",surface2:"#16161F",border:"rgba(255,255,255,0.08)",text:"#E8E8F0",muted:"#6B7A99",textDim:"#8890AA",emerald:"#00D4AA",crimson:"#FF4466",sky:"#4FC3F7"};
 
@@ -568,6 +854,125 @@ function AddCityPanel({apiKey,onAdded,onClose,existingKeys}){
   );
 }
 
+// ── RIDE HUB MODAL ────────────────────────────────────────────────────────────
+function RideHubModal({city, dest, onClose}) {
+  const apps = RIDE_APPS[city.country] || RIDE_APPS["_default"];
+  const acc  = city.accent, accB = city.accentB;
+  const [launched, setLaunched] = useState(null);
+  const [tab, setTab] = useState("all"); // all | cab | bike | auto
+
+  const modes = [...new Set(apps.map(a=>a.mode.split("/")[0]))];
+  const filtered = tab==="all" ? apps : apps.filter(a=>a.mode.toLowerCase().includes(tab));
+
+  const handleLaunch = (app) => {
+    setLaunched(app.name);
+    launchRideApp(app, dest);
+    setTimeout(()=>setLaunched(null), 2000);
+  };
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",
+      zIndex:150,display:"flex",alignItems:"flex-end",backdropFilter:"blur(6px)"}}>
+      <div onClick={e=>e.stopPropagation()} className="modal-sheet" style={{
+        width:"100%",background:"#0E0E18",borderRadius:"22px 22px 0 0",
+        border:`1px solid ${acc}33`,padding:"20px 16px 36px",maxHeight:"88vh",overflowY:"auto"}}>
+
+        {/* Handle */}
+        <div style={{textAlign:"center",marginBottom:16}}>
+          <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 14px"}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:4}}>
+            <div style={{width:36,height:36,borderRadius:10,
+              background:`linear-gradient(135deg,${acc},${accB})`,
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🚕</div>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:"0.08em",
+                background:`linear-gradient(135deg,${acc},${accB})`,
+                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>RIDE BOOKING HUB</div>
+              <div style={{fontSize:10,color:C.muted}}>{city.name} · {apps.length} apps available</div>
+            </div>
+          </div>
+          {dest&&<div style={{fontSize:11,color:C.textDim,marginTop:6}}>
+            📍 Destination: <span style={{color:C.text,fontWeight:600}}>{dest}</span>
+          </div>}
+        </div>
+
+        {/* Mode filter tabs */}
+        <div style={{display:"flex",gap:6,marginBottom:16,overflowX:"auto"}}>
+          {["all",...modes.slice(0,4)].map(m=>(
+            <button key={m} onClick={()=>setTab(m)} style={{
+              flexShrink:0,background:tab===m?`linear-gradient(135deg,${acc},${accB})`:C.surface,
+              color:tab===m?"#000":C.textDim,
+              border:tab===m?"none":`1px solid ${C.border}`,
+              borderRadius:8,padding:"6px 12px",cursor:"pointer",
+              fontSize:11,fontWeight:tab===m?700:400,textTransform:"capitalize"}}>
+              {m==="all"?"All Apps":m}
+            </button>
+          ))}
+        </div>
+
+        {/* App cards */}
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+          {filtered.map((app,i)=>(
+            <div key={i} style={{
+              background:C.surface,border:`1px solid ${C.border}`,
+              borderRadius:14,padding:"13px 14px",
+              display:"flex",alignItems:"center",gap:12,
+              transition:"all 0.2s"}}>
+
+              {/* App icon */}
+              <div style={{width:46,height:46,borderRadius:12,flexShrink:0,
+                background:app.bg,display:"flex",alignItems:"center",
+                justifyContent:"center",fontSize:20,
+                boxShadow:`0 4px 12px ${app.bg}55`}}>
+                {app.icon}
+              </div>
+
+              {/* Info */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{app.name}</div>
+                <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                  <span style={{fontSize:9,background:`${acc}18`,color:acc,
+                    borderRadius:5,padding:"2px 7px",fontWeight:600}}>{app.mode}</span>
+                  <span style={{fontSize:9,color:C.muted}}>{app.tag}</span>
+                </div>
+              </div>
+
+              {/* Open button */}
+              <button onClick={()=>handleLaunch(app)} style={{
+                flexShrink:0,
+                background:launched===app.name
+                  ?`linear-gradient(135deg,${C.emerald},#00AA88)`
+                  :`linear-gradient(135deg,${app.bg},${app.bg}CC)`,
+                border:"none",borderRadius:10,
+                padding:"9px 14px",cursor:"pointer",
+                fontWeight:700,fontSize:12,color:app.fg,
+                boxShadow:`0 3px 10px ${app.bg}55`,
+                transition:"all 0.25s",minWidth:72,textAlign:"center"}}>
+                {launched===app.name?"✓ Opening":"Open →"}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Tip */}
+        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,
+          borderRadius:10,padding:"10px 13px",marginBottom:8}}>
+          <div style={{fontSize:10,color:C.muted,lineHeight:1.7}}>
+            💡 <strong style={{color:C.text}}>How it works:</strong> Tap Open → to launch the app directly. If not installed, we'll take you to the App Store or Play Store to download it. Your destination is pre-filled where supported.
+          </div>
+        </div>
+
+        <button onClick={onClose} style={{
+          width:"100%",background:"rgba(255,255,255,0.06)",
+          border:`1px solid ${C.border}`,borderRadius:12,padding:"12px",
+          cursor:"pointer",color:C.muted,fontSize:13,fontWeight:600}}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── API KEY INLINE PANEL ───────────────────────────────────────────────────────
 function ApiKeyPanel({acc,accB,onSaved,onCancel,showCancel}){
   const [val,setVal]=useState(""),  [show,setShow]=useState(false);
@@ -669,6 +1074,8 @@ function TranzitApp(){
   const [cityModal, setCityModal] = useState(false);
   const [addCityOpen,setAddCityOpen]=useState(false);
   const [time,      setTime]      = useState(new Date());
+  const [rideHubOpen, setRideHubOpen] = useState(false);
+  const [rideHubDest, setRideHubDest] = useState("");
 
   const [apiKey,       setApiKey]      = useState(()=>localStorage.getItem(API_KEY_STORAGE)||"");
   const [showKeyPanel, setShowKeyPanel]= useState(false);
@@ -696,8 +1103,6 @@ function TranzitApp(){
   useEffect(()=>{ setFrom(city.defaultFrom);setTo(city.defaultTo);setRoutes([]);setSearched(false);setSelRoute(0);setAiError("");setShowKeyPanel(false);setEditingKey(false);},[cityKey]);
 
   const fmtTime   =d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
-  const maxBudget =Math.max(...city.budget,1);
-  const totalWeek =city.budget.reduce((s,v)=>s+v,0);
   const fmtFare   =v=>(typeof v==="number"&&v%1!==0)?v.toFixed(2):String(Math.round(v));
   const swap      =()=>{const t=from;setFrom(to);setTo(t);setRoutes([]);setSearched(false);};
 
@@ -826,7 +1231,7 @@ function TranzitApp(){
     {id:"plan",   label:"Route AI",  icon:"🗺️"},
     {id:"live",   label:"Live Intel",icon:"📡"},
     {id:"crowd",  label:"Crowd Map", icon:"👥"},
-    {id:"budget", label:"Spend",     icon:"💰"},
+    {id:"rides",  label:"Ride Hub",  icon:"🚕"},
   ];
 
   const inp={width:"100%",background:"transparent",border:`1px solid ${acc}77`,borderRadius:8,padding:"8px 10px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"};
@@ -926,6 +1331,11 @@ function TranzitApp(){
             />
           </div>
         </div>
+      )}
+
+      {/* ═══ RIDE HUB MODAL ═══ */}
+      {rideHubOpen && (
+        <RideHubModal city={city} dest={rideHubDest} onClose={()=>setRideHubOpen(false)}/>
       )}
 
       {/* ═══ SOS SETUP MODAL ═══ */}
@@ -1131,6 +1541,17 @@ function TranzitApp(){
                       <div style={{height:3,background:"rgba(255,255,255,0.08)",borderRadius:3}}><div style={{height:"100%",width:`${r.reliability}%`,background:`linear-gradient(90deg,${acc},${accB})`,borderRadius:3}}/></div>
                     </div>
                     {selRoute===i&&r.tip&&(<div style={{marginTop:10,background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.15)",borderRadius:8,padding:"8px 10px",fontSize:10,color:C.textDim,lineHeight:1.65}}>🤖 {r.tip}</div>)}
+                    {selRoute===i&&isRideRoute(r)&&(
+                      <button onClick={e=>{e.stopPropagation();setRideHubDest(to);setRideHubOpen(true);}} style={{
+                        width:"100%",marginTop:10,
+                        background:`linear-gradient(135deg,${acc},${accB})`,
+                        border:"none",borderRadius:10,padding:"10px",
+                        cursor:"pointer",fontWeight:700,fontSize:12,color:"#000",
+                        display:"flex",alignItems:"center",justifyContent:"center",gap:7,
+                        boxShadow:`0 3px 12px ${acc}44`}}>
+                        🚕 Book {r.label.split(" ")[0]} via Ride Hub →
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1150,10 +1571,59 @@ function TranzitApp(){
         {activeTab==="live"&&(
           <div>
             <div style={{fontSize:11,color:C.textDim,marginBottom:10,display:"flex",alignItems:"center",gap:6}}><span style={{display:"inline-block",width:7,height:7,background:C.emerald,borderRadius:"50%",animation:"pulse 1.5s infinite"}}/>Live feed · {city.transitLabel}</div>
-            {(city.alerts||[]).map((a,i)=>(<div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${a.type==="warn"?accB:a.type==="safe"?C.emerald:a.type==="crowd"?acc:C.sky}`,borderRadius:11,padding:"11px 13px",marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13}}>{alertIcon(a.type)}</span><span style={{fontSize:9,color:C.muted}}>{["2 min ago","5 min ago","Just now","Now"][i]}</span></div><div style={{fontSize:12,lineHeight:1.55}}>{a.msg}</div></div>))}
+
+            {/* Next Train Timings */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>🕐 NEXT DEPARTURES</div>
+              {(city.lines||[]).map((l,i)=>{
+                const freq = l.freqMins||5;
+                const delayExtra = l.status==="Delayed"?Math.floor(Math.random()*6)+3:0;
+                const now = new Date();
+                const next1 = new Date(now.getTime()+(freq*60000));
+                const next2 = new Date(now.getTime()+(freq*2*60000));
+                const next3 = new Date(now.getTime()+(freq*3*60000));
+                const fmt = d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
+                return(
+                  <div key={i} style={{marginBottom:i<city.lines.length-1?14:0,paddingBottom:i<city.lines.length-1?14:0,borderBottom:i<city.lines.length-1?`1px solid rgba(255,255,255,0.05)`:"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:13}}>{l.line}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{l.route}</div>
+                      </div>
+                      <div style={{fontSize:10,color:statusClr(l.status),fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:statusClr(l.status),display:"inline-block"}}/>
+                        {l.status}{delayExtra>0?` +${delayExtra}m`:""}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      {[
+                        {label:"Next",time:fmt(next1),mins:freq+delayExtra,highlight:true},
+                        {label:"Then",time:fmt(next2),mins:freq*2+delayExtra,highlight:false},
+                        {label:"After",time:fmt(next3),mins:freq*3,highlight:false},
+                      ].map((t,j)=>(
+                        <div key={j} style={{flex:1,background:t.highlight?`linear-gradient(135deg,${acc}22,${accB}14)`:"rgba(255,255,255,0.03)",border:`1px solid ${t.highlight?acc+"44":C.border}`,borderRadius:9,padding:"8px 10px",textAlign:"center"}}>
+                          <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:3}}>{t.label}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:t.highlight?acc:C.text}}>{t.time}</div>
+                          <div style={{fontSize:9,color:C.muted,marginTop:2}}>in {t.mins}m</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{fontSize:9,color:C.muted,marginTop:6}}>Every {freq} min · {l.trains} active services</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Live Alerts */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:9,letterSpacing:"0.08em"}}>📡 LIVE ALERTS</div>
+              {(city.alerts||[]).map((a,i)=>(<div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${a.type==="warn"?accB:a.type==="safe"?C.emerald:a.type==="crowd"?acc:C.sky}`,borderRadius:11,padding:"11px 13px",marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13}}>{alertIcon(a.type)}</span><span style={{fontSize:9,color:C.muted}}>{["2 min ago","5 min ago","Just now","Now"][i]}</span></div><div style={{fontSize:12,lineHeight:1.55}}>{a.msg}</div></div>))}
+            </div>
+
+            {/* Line Status */}
             <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14}}>
               <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:11,letterSpacing:"0.08em"}}>🚉 {city.transitLabel?.toUpperCase()} — LINE STATUS</div>
-              {(city.lines||[]).map((l,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<(city.lines.length-1)?`1px solid rgba(255,255,255,0.05)`:"none"}}><div><div style={{fontWeight:600,fontSize:12}}>{l.line}</div><div style={{fontSize:10,color:C.muted}}>{l.route}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:11,color:statusClr(l.status),fontWeight:600}}>{l.status}</div><div style={{fontSize:9,color:C.muted}}>{l.trains} trains active</div></div></div>))}
+              {(city.lines||[]).map((l,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<(city.lines.length-1)?`1px solid rgba(255,255,255,0.05)`:"none"}}><div><div style={{fontWeight:600,fontSize:12}}>{l.line}</div><div style={{fontSize:10,color:C.muted}}>{l.route}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:11,color:statusClr(l.status),fontWeight:600}}>{l.status}</div><div style={{fontSize:9,color:C.muted}}>{l.trains} active · every {l.freqMins}m</div></div></div>))}
             </div>
           </div>
         )}
@@ -1166,36 +1636,149 @@ function TranzitApp(){
               <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>📍 STATION CROWD LEVELS</div>
               {(city.stations||[]).map((s,i)=>(<div key={i} style={{marginBottom:13}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:5}}><div><span style={{fontWeight:600}}>{s.stn}</span><span style={{fontSize:9,color:C.muted,marginLeft:7}}>{s.dir}</span></div><span style={{fontFamily:"'DM Mono',monospace",color:crowdColor(s.pct),fontWeight:600}}>{s.pct}%</span></div><div style={{height:5,background:"rgba(255,255,255,0.08)",borderRadius:4}}><div style={{height:"100%",width:`${s.pct}%`,background:`linear-gradient(90deg,${crowdColor(s.pct)}88,${crowdColor(s.pct)})`,borderRadius:4}}/></div><div style={{fontSize:9,color:crowdColor(s.pct),marginTop:2}}>{s.pct>85?"⚠ VERY CROWDED":s.pct>65?"BUSY":"✓ CLEAR"}</div></div>))}
             </div>
+
+            {/* Dynamic coaches from city data */}
             <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14}}>
-              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>🚃 COACH OCCUPANCY</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                {[{l:"Car 1",p:85},{l:"Car 2",p:48},{l:"Car 3 ♀",p:62},{l:"Car 4",p:91},{l:"Car 5",p:70},{l:"Car 6",p:38}].map((c,i)=>(<div key={i} style={{textAlign:"center"}}><div style={{fontSize:9,color:C.muted,marginBottom:6}}>{c.l}</div><div style={{width:46,height:46,borderRadius:"50%",margin:"0 auto 6px",background:`conic-gradient(${crowdColor(c.p)} ${c.p*3.6}deg,rgba(255,255,255,0.08) 0)`,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:30,height:30,borderRadius:"50%",background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:600,color:crowdColor(c.p)}}>{c.p}%</div></div><div style={{fontSize:9,color:crowdColor(c.p),fontWeight:600}}>{c.p>85?"PACKED":c.p>65?"BUSY":"CLEAR"}</div></div>))}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:acc,letterSpacing:"0.08em"}}>🚃 COACH OCCUPANCY</div>
+                <div style={{fontSize:9,color:C.muted}}>{(city.coaches||[]).length} coaches · {city.lines?.[0]?.line||""}</div>
+              </div>
+              {/* Legend */}
+              <div style={{display:"flex",gap:12,marginBottom:12}}>
+                {[{c:"#00D4AA",l:"Clear"},{c:"#F5A623",l:"Busy"},{c:"#FF4466",l:"Packed"},{c:"rgba(100,150,255,0.8)",l:"Special"}].map((le,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:le.c}}/>
+                    <span style={{fontSize:9,color:C.muted}}>{le.l}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min((city.coaches||[]).length,4)===1?1:Math.min((city.coaches||[]).length,4)>=3?3:2},1fr)`,gap:8}}>
+                {(city.coaches||[]).map((c,i)=>{
+                  const col = c.special?"rgba(100,150,255,0.85)":crowdColor(c.p);
+                  return(
+                    <div key={i} style={{textAlign:"center",background:"rgba(255,255,255,0.02)",borderRadius:10,padding:"10px 6px",border:`1px solid ${c.special?"rgba(100,150,255,0.2)":C.border}`}}>
+                      <div style={{fontSize:9,color:c.special?"rgba(150,180,255,0.8)":C.muted,marginBottom:6,fontWeight:c.special?600:400}}>{c.l}</div>
+                      <div style={{width:42,height:42,borderRadius:"50%",margin:"0 auto 6px",
+                        background:`conic-gradient(${col} ${c.p*3.6}deg,rgba(255,255,255,0.08) 0)`,
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <div style={{width:28,height:28,borderRadius:"50%",background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:600,color:col}}>{c.p}%</div>
+                      </div>
+                      <div style={{fontSize:8,color:col,fontWeight:600}}>
+                        {c.special&&c.note?c.note:c.p>85?"PACKED":c.p>65?"BUSY":"CLEAR"}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
 
-        {/* ── SPEND ── */}
-        {activeTab==="budget"&&(
-          <div>
-            <div style={{background:`linear-gradient(135deg,${acc}1A,${accB}0E)`,border:`1px solid ${acc}33`,borderRadius:14,padding:"15px 17px",marginBottom:13}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:4}}>THIS WEEK</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:32,color:accB}}>{city.currency}{totalWeek%1!==0?totalWeek.toFixed(2):Math.round(totalWeek)}</div>
-              <div style={{fontSize:10,color:C.textDim,marginTop:3}}>Monthly budget: <span style={{color:accB}}>{city.currency}{city.monthlyBudget?.toLocaleString()}</span></div>
-              <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:3,marginTop:10}}><div style={{height:"100%",width:`${Math.min((totalWeek/city.monthlyBudget)*100,100)}%`,background:`linear-gradient(90deg,${acc},${accB})`,borderRadius:3}}/></div>
-              <div style={{fontSize:9,color:C.muted,marginTop:2}}>{Math.round((totalWeek/city.monthlyBudget)*100)}% of monthly budget used</div>
-            </div>
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"13px 13px 10px"}}>
-              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:13,letterSpacing:"0.08em"}}>DAILY SPEND</div>
-              <div style={{display:"flex",alignItems:"flex-end",gap:8,height:90}}>
-                {city.budget.map((v,i)=>(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}><div style={{fontSize:8,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{v>0?`${city.currency}${v%1!==0?v.toFixed(1):v}`:"—"}</div><div style={{width:"100%",borderRadius:"3px 3px 0 0",minHeight:v>0?3:0,height:`${(v/maxBudget)*65}px`,background:v>city.monthlyBudget/18?`linear-gradient(180deg,${C.crimson},${C.crimson}88)`:`linear-gradient(180deg,${acc},${acc}77)`,transition:"height 0.5s ease"}}/><div style={{fontSize:10,color:C.muted}}>{DAYS[i]}</div></div>))}
+        {/* ── RIDE HUB TAB ── */}
+        {activeTab==="rides"&&(()=>{
+          const apps = RIDE_APPS[city.country] || RIDE_APPS["_default"];
+          const modes = [...new Set(apps.map(a=>a.mode.split("/")[0]))];
+          return (
+            <div>
+              {/* Hero */}
+              <div style={{background:`linear-gradient(135deg,${acc}18,${accB}0C)`,
+                border:`1px solid ${acc}33`,borderRadius:16,padding:"16px",marginBottom:14,textAlign:"center"}}>
+                <div style={{fontSize:32,marginBottom:6}}>🚕</div>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:"0.08em",
+                  background:`linear-gradient(135deg,${acc},${accB})`,
+                  WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+                  RIDE BOOKING HUB
+                </div>
+                <div style={{fontSize:11,color:C.textDim,marginTop:4}}>
+                  {apps.length} ride apps for {city.name} · Tap to open &amp; book instantly
+                </div>
+                <div style={{display:"flex",gap:6,justifyContent:"center",marginTop:10,flexWrap:"wrap"}}>
+                  {modes.map(m=>(
+                    <span key={m} style={{fontSize:10,background:`${acc}20`,color:acc,
+                      borderRadius:6,padding:"3px 9px",fontWeight:600}}>{m}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Destination quick-fill */}
+              <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"12px 14px",marginBottom:14}}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:7}}>📍 WHERE ARE YOU GOING?</div>
+                <input
+                  value={rideHubDest}
+                  onChange={e=>setRideHubDest(e.target.value)}
+                  placeholder={`e.g. ${city.defaultTo}, Airport, Hotel name…`}
+                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
+                    borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,
+                    outline:"none",boxSizing:"border-box"}}/>
+                <div style={{fontSize:10,color:C.muted,marginTop:5}}>
+                  Share your destination with the ride app for accurate fare estimates.
+                </div>
+              </div>
+
+              {/* All apps */}
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>
+                AVAILABLE IN {city.name.toUpperCase()}
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+                {apps.map((app,i)=>(
+                  <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderRadius:14,padding:"13px 14px",display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:50,height:50,borderRadius:13,flexShrink:0,
+                      background:app.bg,display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:22,boxShadow:`0 4px 14px ${app.bg}66`}}>{app.icon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:14}}>{app.name}</div>
+                      <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                        <span style={{fontSize:9,background:`${acc}18`,color:acc,
+                          borderRadius:5,padding:"2px 8px",fontWeight:600}}>{app.mode}</span>
+                        <span style={{fontSize:10,color:C.muted}}>{app.tag}</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>{setRideHubDest(rideHubDest||to);launchRideApp(app,rideHubDest||to);}} style={{
+                      flexShrink:0,background:`linear-gradient(135deg,${app.bg},${app.bg}CC)`,
+                      border:"none",borderRadius:11,padding:"10px 16px",cursor:"pointer",
+                      fontWeight:700,fontSize:12,color:app.fg,
+                      boxShadow:`0 3px 12px ${app.bg}55`,minWidth:80,textAlign:"center"}}>
+                      Open →
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Global fallback note */}
+              {!RIDE_APPS[city.country]&&(
+                <div style={{background:`${acc}10`,border:`1px dashed ${acc}44`,borderRadius:10,
+                  padding:"10px 13px",fontSize:11,color:C.textDim,lineHeight:1.6}}>
+                  🌍 Showing global ride apps. Local apps for {city.name} will be added in future builds.
+                </div>
+              )}
+
+              {/* How it works */}
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,
+                borderRadius:12,padding:"12px 14px",marginTop:8}}>
+                <div style={{fontSize:10,fontWeight:600,color:C.text,marginBottom:8,letterSpacing:"0.08em"}}>
+                  ⚡ HOW RIDE HUB WORKS
+                </div>
+                {[
+                  {i:"1",t:"Enter your destination above (optional but recommended)"},
+                  {i:"2",t:"Tap Open → to launch the ride app on your phone"},
+                  {i:"3",t:"If not installed, we'll take you to the App Store / Play Store"},
+                  {i:"4",t:"Your destination is pre-filled in apps that support it"},
+                  {i:"5",t:"Compare fares across apps to get the best deal"},
+                ].map(s=>(
+                  <div key={s.i} style={{display:"flex",alignItems:"flex-start",gap:9,marginBottom:8}}>
+                    <div style={{width:20,height:20,borderRadius:"50%",
+                      background:`${acc}28`,border:`1px solid ${acc}55`,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:10,fontWeight:700,color:acc,flexShrink:0}}>{s.i}</div>
+                    <div style={{fontSize:11,color:C.textDim,lineHeight:1.5,paddingTop:2}}>{s.t}</div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
-
-      {/* ═══ BOTTOM BAR + FOOTER ═══ */}
       <div style={{position:"fixed",bottom:0,left:0,right:0,background:`linear-gradient(transparent,${C.bg} 28%)`,paddingTop:10}}>
 
         {/* Token Intelligence Strip */}
