@@ -141,19 +141,19 @@ const WORLD_CITIES = {
 };
 
 const COUNTRY_ACCENTS = {
-  "India":"#FF6B1A","United Kingdom":"#E40000","United States":"#0039A6",
-  "Australia":"#00843D","Japan":"#BC002D","China":"#DE2910","Germany":"#FFCC00",
-  "France":"#003399","UAE":"#C79A00","Singapore":"#CC0001","Canada":"#D80000",
-  "Brazil":"#009C3B","South Africa":"#007A4D","Nigeria":"#008751","Kenya":"#006600",
-  "Thailand":"#A51931","Indonesia":"#CE1126","Malaysia":"#CC0001","Philippines":"#0038A8",
-  "South Korea":"#003478","Pakistan":"#01411C","Bangladesh":"#006A4E","Sri Lanka":"#8D153A",
-  "Nepal":"#003893","Mexico":"#006847","Argentina":"#74ACDF","Colombia":"#FCD116",
-  "Egypt":"#CE1126","Morocco":"#C1272D","Ethiopia":"#078930","Saudi Arabia":"#006C35",
-  "Turkey":"#E30A17","Iran":"#239F40","Italy":"#009246","Spain":"#AA151B",
-  "Netherlands":"#AE1C28","Sweden":"#006AA7","Norway":"#EF2B2D","Poland":"#DC143C",
-  "Russia":"#0032A0","Vietnam":"#DA251D","New Zealand":"#00247D","Portugal":"#006600",
-  "Greece":"#0D5EAF","Switzerland":"#FF0000","Belgium":"#FAE042","Chile":"#D52B1E",
-  "Peru":"#D91023","Ghana":"#006B3F","Tanzania":"#1EB53A",
+  "India":"#FF6B1A","United Kingdom":"#1565C0","United States":"#1A73E8",
+  "Australia":"#00843D","Japan":"#2C3E7A","China":"#C0392B","Germany":"#2980B9",
+  "France":"#2471A3","UAE":"#C79A00","Singapore":"#0096C7","Canada":"#1A73E8",
+  "Brazil":"#1E8449","South Africa":"#1A7A4A","Nigeria":"#1A7A3A","Kenya":"#1A6B1A",
+  "Thailand":"#8E44AD","Indonesia":"#C0392B","Malaysia":"#27AE60","Philippines":"#2471A3",
+  "South Korea":"#2471A3","Pakistan":"#1A7A3A","Bangladesh":"#1A8A3A","Sri Lanka":"#8E44AD",
+  "Nepal":"#2471A3","Mexico":"#1A7A3A","Argentina":"#2980B9","Colombia":"#C79A00",
+  "Egypt":"#C0392B","Morocco":"#C0392B","Ethiopia":"#1A7A3A","Saudi Arabia":"#1A7A3A",
+  "Turkey":"#C0392B","Iran":"#1A7A3A","Italy":"#27AE60","Spain":"#C0392B",
+  "Netherlands":"#C0392B","Sweden":"#2980B9","Norway":"#C0392B","Poland":"#C0392B",
+  "Russia":"#2471A3","Vietnam":"#C0392B","New Zealand":"#2471A3","Portugal":"#1A7A3A",
+  "Greece":"#2471A3","Switzerland":"#C0392B","Belgium":"#C79A00","Chile":"#2471A3",
+  "Peru":"#C0392B","Ghana":"#1A7A3A","Tanzania":"#1A8A3A",
 };
 
 const COUNTRY_FLAGS = {
@@ -177,22 +177,22 @@ const BUILTIN_CITIES = {
     lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14,freqMins:4},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11,freqMins:6},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8,freqMins:8}],
     stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],
     alerts:[{type:"warn",msg:"Metro Blue Line delayed 8 min — signal fault near Ameerpet"},{type:"info",msg:"TSRTC 216K running on alternate route via Banjara Hills"},{type:"safe",msg:"Safe Zone active: Women's coach M3 verified occupied"},{type:"crowd",msg:"Secunderabad platform 3 crowd HIGH — suggest M2 coach"}]},
-  mumbai:{name:"Mumbai",country:"India",flag:"🇮🇳",currency:"₹",code:"BOM",accent:"#0066CC",accentB:"#00AAFF",timezone:"IST",transitLabel:"Mumbai Local & Metro",defaultFrom:"Andheri",defaultTo:"Churchgate",popularRoutes:[["Andheri","Churchgate"],["Bandra","CST"],["Borivali","Dadar"],["Kurla","Thane"]],
+  mumbai:{name:"Mumbai",country:"India",flag:"🇮🇳",currency:"₹",code:"BOM",accent:"#0288D1",accentB:"#4FC3F7",timezone:"IST",transitLabel:"Mumbai Local & Metro",defaultFrom:"Andheri",defaultTo:"Churchgate",popularRoutes:[["Andheri","Churchgate"],["Bandra","CST"],["Borivali","Dadar"],["Kurla","Thane"]],
     coaches:[{l:"C1 ♀",p:72,special:true,note:"Ladies"},{l:"C2",p:88,special:false},{l:"C3",p:91,special:false},{l:"C4",p:84,special:false},{l:"C5",p:79,special:false},{l:"C6",p:65,special:false},{l:"C7",p:70,special:false},{l:"C8",p:55,special:false},{l:"C9 ♀",p:60,special:true,note:"Ladies"}],
     lines:[{line:"Western",route:"Churchgate ↔ Dahanu Road",status:"On Time",trains:22,freqMins:3},{line:"Central",route:"CST ↔ Kasara / Panvel",status:"Delayed",trains:20,freqMins:4},{line:"Harbour",route:"CST ↔ Panvel",status:"On Time",trains:14,freqMins:6}],
     stations:[{stn:"Dadar",pct:96,dir:"Western + Central interchange"},{stn:"Andheri",pct:84,dir:"Western Line"},{stn:"Kurla",pct:79,dir:"Central + Metro interchange"},{stn:"Bandra",pct:61,dir:"Western Line"}],
     alerts:[{type:"warn",msg:"Central Line delayed 12 min — track maintenance near Thane"},{type:"info",msg:"AC Local on platform 7 instead of 4 — Churchgate"},{type:"safe",msg:"Women's special 7:45 AM fast from Borivali platform 2"},{type:"crowd",msg:"Dadar station crowd RED — use foot overbridge exit 3"}]},
-  delhi:{name:"Delhi",country:"India",flag:"🇮🇳",currency:"₹",code:"DEL",accent:"#8B0000",accentB:"#CC3300",timezone:"IST",transitLabel:"Delhi Metro (DMRC)",defaultFrom:"Dwarka Sec 21",defaultTo:"Connaught Place",popularRoutes:[["Dwarka Sec 21","Connaught Place"],["Noida Sec 18","Rajiv Chowk"],["Gurgaon","Hauz Khas"],["Rohini","Chandni Chowk"]],
+  delhi:{name:"Delhi",country:"India",flag:"🇮🇳",currency:"₹",code:"DEL",accent:"#7B1FA2",accentB:"#CE93D8",timezone:"IST",transitLabel:"Delhi Metro (DMRC)",defaultFrom:"Dwarka Sec 21",defaultTo:"Connaught Place",popularRoutes:[["Dwarka Sec 21","Connaught Place"],["Noida Sec 18","Rajiv Chowk"],["Gurgaon","Hauz Khas"],["Rohini","Chandni Chowk"]],
     coaches:[{l:"C1 ♀",p:58,special:true,note:"Pink Coach"},{l:"C2",p:88,special:false},{l:"C3",p:76,special:false},{l:"C4",p:93,special:false},{l:"C5",p:69,special:false},{l:"C6",p:52,special:false}],
     lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18,freqMins:4},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22,freqMins:3},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12,freqMins:7}],
     stations:[{stn:"Rajiv Chowk",pct:93,dir:"Yellow + Blue interchange"},{stn:"Kashmere Gate",pct:77,dir:"Red + Yellow + Violet"},{stn:"Hauz Khas",pct:55,dir:"Yellow + Magenta interchange"},{stn:"Noida Sector 18",pct:62,dir:"Blue Line terminus area"}],
     alerts:[{type:"warn",msg:"Red Line delay 15 min — Kashmere Gate to Dilshad Garden"},{type:"info",msg:"AQI 187 (Moderate) — Metro recommended over outdoor options"},{type:"safe",msg:"Pink coach active on all Yellow Line trains till 9 PM"},{type:"crowd",msg:"Rajiv Chowk gate 7 queue 20 min — use gate 2 instead"}]},
-  london:{name:"London",country:"United Kingdom",flag:"🇬🇧",currency:"£",code:"LON",accent:"#E40000",accentB:"#FF6666",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],
+  london:{name:"London",country:"United Kingdom",flag:"🇬🇧",currency:"£",code:"LON",accent:"#1565C0",accentB:"#5BA4E8",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],
     coaches:[{l:"Car 1",p:82,special:false},{l:"Car 2",p:75,special:false},{l:"Car 3",p:68,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:73,special:false},{l:"Car 6",p:61,special:false},{l:"Car 7",p:55,special:false},{l:"Car 8",p:48,special:false}],
     lines:[{line:"Central Line",route:"West Ruislip ↔ Epping",status:"On Time",trains:16,freqMins:3},{line:"Elizabeth Line",route:"Reading ↔ Shenfield / Abbey",status:"On Time",trains:14,freqMins:5},{line:"Northern Line",route:"Morden ↔ Edgware / Mill Hill",status:"Delayed",trains:18,freqMins:4}],
     stations:[{stn:"King's Cross",pct:82,dir:"6 lines interchange"},{stn:"Bank/Monument",pct:75,dir:"Central + Waterloo + City"},{stn:"Paddington",pct:58,dir:"Elizabeth + Bakerloo + Circle"},{stn:"Liverpool St",pct:69,dir:"Central + Elizabeth + Overground"}],
     alerts:[{type:"warn",msg:"Northern Line severe delays — signal failure at Camden Town"},{type:"info",msg:"Elizabeth Line running 4 extra trains/hr during rush hour"},{type:"safe",msg:"Night Tube active Fri–Sat: Central, Jubilee, Northern, Victoria"},{type:"crowd",msg:"King's Cross gateline queues 15 min — use York Way entrance"}]},
-  singapore:{name:"Singapore",country:"Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#CC0001",accentB:"#FF4444",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],
+  singapore:{name:"Singapore",country:"Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#0096C7",accentB:"#48CAE4",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],
     coaches:[{l:"Car 1",p:78,special:false},{l:"Car 2",p:84,special:false},{l:"Car 3",p:61,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:55,special:false},{l:"Car 6",p:43,special:false}],
     lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16,freqMins:4},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20,freqMins:3},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10,freqMins:7}],
     stations:[{stn:"City Hall",pct:78,dir:"NS + EW interchange"},{stn:"Raffles Place",pct:84,dir:"NS + EW CBD core"},{stn:"Dhoby Ghaut",pct:61,dir:"NS + NE + Circle"},{stn:"Jurong East",pct:55,dir:"NS + EW + 2 malls"}],
@@ -202,12 +202,12 @@ const BUILTIN_CITIES = {
     lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12,freqMins:5},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8,freqMins:7},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6,freqMins:10}],
     stations:[{stn:"Union",pct:72,dir:"Red + Green interchange"},{stn:"DMCC",pct:65,dir:"JLT / Marina area"},{stn:"Dubai Mall",pct:88,dir:"Near Burj Khalifa"},{stn:"Airport T3",pct:55,dir:"DXB Terminal 3"}],
     alerts:[{type:"info",msg:"Gold class carriages available on all Red Line — AED 20 upgrade"},{type:"warn",msg:"Dubai Mall station crowded during sale season — allow 15 min extra"},{type:"safe",msg:"Women & children carriage at front of every train — enforced"},{type:"info",msg:"Nol card top-up at all metro stations and LuLu Hypermarkets"}]},
-  newyork:{name:"New York",country:"United States",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#0039A6",accentB:"#FF6319",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],
+  newyork:{name:"New York",country:"United States",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#1A73E8",accentB:"#F5A623",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],
     coaches:[{l:"Car 1",p:91,special:false},{l:"Car 2",p:83,special:false},{l:"Car 3",p:76,special:false},{l:"Car 4",p:88,special:false},{l:"Car 5",p:70,special:false},{l:"Car 6",p:65,special:false},{l:"Car 7",p:58,special:false},{l:"Car 8",p:44,special:false}],
     lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24,freqMins:4},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20,freqMins:5},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10,freqMins:8}],
     stations:[{stn:"Times Sq–42 St",pct:91,dir:"Busiest station globally"},{stn:"Grand Central",pct:83,dir:"4/5/6/7 + Metro-North"},{stn:"Union Square",pct:74,dir:"4/5/6/N/Q/R/W/L"},{stn:"Atlantic Ave",pct:66,dir:"Brooklyn interchange hub"}],
     alerts:[{type:"warn",msg:"4 train running express — skipping 51st, 68th, 77th St"},{type:"info",msg:"OMNY contactless accepted on all buses and subways"},{type:"crowd",msg:"Times Square gridlock — use 42nd St Bryant Park as alternate"},{type:"info",msg:"L train weekend suspended Canarsie–Jefferson: Q shuttle active"}]},
-  tokyo:{name:"Tokyo",country:"Japan",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#BC002D",accentB:"#FF6B81",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],
+  tokyo:{name:"Tokyo",country:"Japan",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#2C3E7A",accentB:"#7EC8E3",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],
     coaches:[{l:"1号車",p:88,special:false},{l:"2号車",p:82,special:false},{l:"3号車",p:75,special:false},{l:"4号車 ♀",p:60,special:true,note:"Women only rush hours"},{l:"5号車",p:91,special:false},{l:"6号車",p:78,special:false},{l:"7号車",p:70,special:false},{l:"8号車",p:65,special:false},{l:"9号車",p:55,special:false},{l:"10号車",p:48,special:false},{l:"11号車",p:42,special:false}],
     lines:[{line:"Ginza Line",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14,freqMins:3},{line:"Yamanote Line",route:"Loop (30 stations)",status:"On Time",trains:20,freqMins:2},{line:"Chuo Line",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16,freqMins:5}],
     stations:[{stn:"Shinjuku",pct:96,dir:"World's busiest station"},{stn:"Shibuya",pct:88,dir:"Multiple lines + Scramble"},{stn:"Tokyo",pct:77,dir:"Shinkansen + Yamanote hub"},{stn:"Ikebukuro",pct:80,dir:"Yamanote + Fukutoshin"}],
@@ -222,7 +222,7 @@ const BUILTIN_CITIES = {
 
 const crowdColor=p=>p>85?"#FF4466":p>65?"#F5A623":"#00D4AA";
 const alertIcon =t=>({warn:"⚠️",info:"ℹ️",safe:"🛡️",crowd:"👥"}[t]);
-const statusClr =s=>s==="On Time"?"#00D4AA":"#FF4466";
+const statusClr = s => s==="On Time"?"#00D4AA":s==="Delayed"?"#F5A623":"#8890AA";
 const maskKey   =k=>k?`${k.slice(0,8)}${"•".repeat(12)}${k.slice(-4)}`:"";
 const slugify   =s=>s.toLowerCase().replace(/[^a-z0-9]/g,"_");
 
@@ -1574,41 +1574,80 @@ function TranzitApp(){
 
             {/* Next Train Timings */}
             <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>🕐 NEXT DEPARTURES</div>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:8,letterSpacing:"0.08em"}}>🕐 NEXT DEPARTURES</div>
+              {/* Urgency legend */}
+              <div style={{display:"flex",gap:12,marginBottom:12,padding:"6px 10px",
+                background:"rgba(255,255,255,0.03)",borderRadius:8}}>
+                {[
+                  {c:"#FF4466",l:"≤ 2 min — Hurry!"},
+                  {c:"#F5A623",l:"3–5 min — Soon"},
+                  {c:"#00D4AA",l:"> 5 min — Comfortable"},
+                ].map((leg,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:leg.c,flexShrink:0}}/>
+                    <span style={{fontSize:9,color:C.muted}}>{leg.l}</span>
+                  </div>
+                ))}
+              </div>
               {(city.lines||[]).map((l,i)=>{
                 const freq = l.freqMins||5;
                 const delayExtra = l.status==="Delayed"?Math.floor(Math.random()*6)+3:0;
                 const now = new Date();
-                const next1 = new Date(now.getTime()+(freq*60000));
-                const next2 = new Date(now.getTime()+(freq*2*60000));
-                const next3 = new Date(now.getTime()+(freq*3*60000));
+                const next1mins = freq+delayExtra;
+                const next2mins = freq*2+delayExtra;
+                const next3mins = freq*3;
+                const next1 = new Date(now.getTime()+(next1mins*60000));
+                const next2 = new Date(now.getTime()+(next2mins*60000));
+                const next3 = new Date(now.getTime()+(next3mins*60000));
                 const fmt = d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
+                // Urgency color: ≤2min RED, 3–5min AMBER, >5min GREEN
+                const urgencyColor = m => m<=2?"#FF4466":m<=5?"#F5A623":"#00D4AA";
+                const urgencyBg    = m => m<=2?"rgba(255,68,102,0.12)":m<=5?"rgba(245,166,35,0.10)":"rgba(0,212,170,0.08)";
+                const urgencyBorder= m => m<=2?"rgba(255,68,102,0.35)":m<=5?"rgba(245,166,35,0.30)":"rgba(0,212,170,0.25)";
+                const urgencyLabel = m => m<=2?"NOW":"";
                 return(
-                  <div key={i} style={{marginBottom:i<city.lines.length-1?14:0,paddingBottom:i<city.lines.length-1?14:0,borderBottom:i<city.lines.length-1?`1px solid rgba(255,255,255,0.05)`:"none"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div key={i} style={{marginBottom:i<city.lines.length-1?16:0,paddingBottom:i<city.lines.length-1?16:0,borderBottom:i<city.lines.length-1?`1px solid rgba(255,255,255,0.05)`:"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                       <div>
                         <div style={{fontWeight:600,fontSize:13}}>{l.line}</div>
                         <div style={{fontSize:10,color:C.muted}}>{l.route}</div>
                       </div>
-                      <div style={{fontSize:10,color:statusClr(l.status),fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
-                        <span style={{width:6,height:6,borderRadius:"50%",background:statusClr(l.status),display:"inline-block"}}/>
+                      <div style={{fontSize:10,fontWeight:600,display:"flex",alignItems:"center",gap:5,
+                        color:l.status==="Delayed"?"#F5A623":C.emerald}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",
+                          background:l.status==="Delayed"?"#F5A623":C.emerald,display:"inline-block"}}/>
                         {l.status}{delayExtra>0?` +${delayExtra}m`:""}
                       </div>
                     </div>
-                    <div style={{display:"flex",gap:8}}>
+                    <div style={{display:"flex",gap:7}}>
                       {[
-                        {label:"Next",time:fmt(next1),mins:freq+delayExtra,highlight:true},
-                        {label:"Then",time:fmt(next2),mins:freq*2+delayExtra,highlight:false},
-                        {label:"After",time:fmt(next3),mins:freq*3,highlight:false},
+                        {label:"Next",  mins:next1mins, time:fmt(next1), primary:true},
+                        {label:"Then",  mins:next2mins, time:fmt(next2), primary:false},
+                        {label:"After", mins:next3mins, time:fmt(next3), primary:false},
                       ].map((t,j)=>(
-                        <div key={j} style={{flex:1,background:t.highlight?`linear-gradient(135deg,${acc}22,${accB}14)`:"rgba(255,255,255,0.03)",border:`1px solid ${t.highlight?acc+"44":C.border}`,borderRadius:9,padding:"8px 10px",textAlign:"center"}}>
-                          <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:3}}>{t.label}</div>
-                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:t.highlight?acc:C.text}}>{t.time}</div>
-                          <div style={{fontSize:9,color:C.muted,marginTop:2}}>in {t.mins}m</div>
+                        <div key={j} style={{flex:1,
+                          background:t.primary?urgencyBg(t.mins):"rgba(255,255,255,0.03)",
+                          border:`1px solid ${t.primary?urgencyBorder(t.mins):C.border}`,
+                          borderRadius:10,padding:"9px 8px",textAlign:"center",position:"relative",
+                          transition:"all 0.3s"}}>
+                          {urgencyLabel(t.mins)&&t.primary&&(
+                            <div style={{position:"absolute",top:-7,left:"50%",transform:"translateX(-50%)",
+                              background:"#FF4466",borderRadius:4,padding:"1px 6px",
+                              fontSize:8,fontWeight:700,color:"#fff",letterSpacing:"0.06em"}}>
+                              ARRIVING
+                            </div>
+                          )}
+                          <div style={{fontSize:9,color:C.muted,letterSpacing:"0.06em",marginBottom:4}}>{t.label}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,
+                            color:t.primary?urgencyColor(t.mins):C.textDim}}>{t.time}</div>
+                          <div style={{fontSize:10,marginTop:3,fontWeight:t.primary?600:400,
+                            color:t.primary?urgencyColor(t.mins):C.muted}}>
+                            {t.mins<=1?"< 1 min":`${t.mins} min`}
+                          </div>
                         </div>
                       ))}
                     </div>
-                    <div style={{fontSize:9,color:C.muted,marginTop:6}}>Every {freq} min · {l.trains} active services</div>
+                    <div style={{fontSize:9,color:C.muted,marginTop:7}}>Every {freq} min · {l.trains} active services</div>
                   </div>
                 );
               })}
