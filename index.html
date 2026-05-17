@@ -860,6 +860,23 @@ async function findNearestMetroStation(lat, lng, cityName, radiusM=5000) {
   }
   return null;
 }
+// ── CLAUDE-POWERED NEAREST STATION LOOKUP ────────────────────────────────────
+async function findNearestStationClaude(lat, lng, city, apiKey) {
+  const prompt = `GPS coordinates: ${lat}, ${lng} in ${city.name}, ${city.country}. Transit: ${city.transitLabel}.
+What is the single nearest metro/subway/MRT/rail station to these coordinates?
+Reply ONLY with JSON — no other text: {"station":"Exact Station Name","distanceKm":0.0,"line":"Line name"}
+Use your geographic knowledge of ${city.name}'s transit network. Be precise about which station is closest.`;
+
+  const {res} = await callWithFallback(
+    apiKey,
+    (modelId)=>({model:modelId, max_tokens:80, messages:[{role:"user",content:prompt}]}),
+    null
+  );
+  const data = await res.json();
+  const raw = data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim();
+  return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}")+1));
+}
+
 async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChange) {
   const key = cacheKey(city.code, from, to);
 
@@ -1657,8 +1674,8 @@ function TranzitApp(){
   const [toStationMins,  setToStationMins]  = useState("");
   const [toStationBusy,  setToStationBusy]  = useState(false);
   const [toStationError, setToStationError] = useState("");
-  const [plannerNearestStation, setPlannerNearestStation] = useState(null); // {name, lat, lng, source}
-  const [stationSearchBusy, setStationSearchBusy] = useState(false);
+  const [plannerNearestStation, setPlannerNearestStation] = useState(null);
+  const [stationInputFocused, setStationInputFocused] = useState(false);
 
   // Auto-fetch routing time when mode changes (needs GPS + station)
   const autoFetchStationTime = async (mode, knownStationName, coordsOverride) => {
@@ -1667,30 +1684,24 @@ function TranzitApp(){
       try { coords = await getLocation(); setPlannerLocation(coords); }
       catch(e) { setToStationError("Enable location access to auto-fetch time."); return; }
     }
-    setToStationBusy(true); setToStationMins(""); setToStationError("");
-    try {
       const stationName = knownStationName
         || (plannerNearestStation?.name)
         || (plannerResult?.nearestStation)
         || "";
+
+    setToStationBusy(true); setToStationMins(""); setToStationError("");
+    try {
       let result = null;
       if(stationName) {
         result = await getStationRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), stationName, city.name, mode);
-      }
-      if(!result) {
-        // Find nearest station automatically
-        const nearest = await findNearestMetroStation(parseFloat(coords.lat), parseFloat(coords.lng), city.name);
-        if(nearest) {
-          const modeConfig = OSM_PROFILES[mode]||OSM_PROFILES.walk;
-          const rawMins = await osrmRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), nearest.lat, nearest.lng, modeConfig.profile);
-          if(rawMins) result = {mins: Math.max(1, Math.round(rawMins * modeConfig.multiplier)), note:modeConfig.note};
-        }
       }
       if(result?.mins) {
         setToStationMins(String(result.mins));
         setToStationError(result.note ? `ℹ️ ${result.note}` : "");
       } else {
-        setToStationError("Could not auto-fetch. Check on Google Maps manually.");
+        setToStationError(stationName
+          ? "Could not route to station. Verify name on Google Maps."
+          : "Select a station first, then pick travel mode.");
       }
     } catch(e) {
       setToStationError("Auto-fetch failed. Check Google Maps manually.");
@@ -1952,42 +1963,29 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
       const c = await getLocation();
       setPlannerLocation(c);
       setPlannerOrigin("📍 My current location");
-      // Immediately search for nearest metro station via OpenStreetMap
-      if(c.lat !== "unknown") {
-        setStationSearchBusy(true);
+
+      // Auto-find nearest station via Claude AI (if API key exists)
+      if(c.lat!=="unknown" && apiKey) {
+        setPlannerNearestStation({name:"", source:"searching"});
         try {
-          const station = await findNearestMetroStation(parseFloat(c.lat), parseFloat(c.lng), city.name);
-          if(station) {
-            setPlannerNearestStation({...station, source:"osm"});
-            // Also trigger auto-fetch of route time to this station
+          const result = await findNearestStationClaude(c.lat, c.lng, city, apiKey);
+          if(result?.station) {
+            setPlannerNearestStation({
+              name: result.station,
+              distKm: result.distanceKm?.toFixed?.(1) || "",
+              line: result.line || "",
+              source: "claude"
+            });
+            // Immediately fetch route time to this station
             setToStationMins("");
-            autoFetchStationTime(toStationMode, station.name, c);
+            autoFetchStationTime(toStationMode, result.station, c);
           }
-        } catch(e) {}
-        setStationSearchBusy(false);
+        } catch(e) {
+          setPlannerNearestStation(null);
+        }
       }
     } catch(e) {}
     setPlannerLocBusy(false);
-  };
-
-  const searchNearestStation = async () => {
-    let coords = plannerLocation;
-    if(!coords || coords.lat==="unknown") {
-      try { coords = await getLocation(); setPlannerLocation(coords); }
-      catch(e) { return; }
-    }
-    setStationSearchBusy(true);
-    try {
-      const station = await findNearestMetroStation(parseFloat(coords.lat), parseFloat(coords.lng), city.name);
-      if(station) {
-        setPlannerNearestStation({...station, source:"osm"});
-        setToStationMins("");
-        autoFetchStationTime(toStationMode, station.name, coords);
-      } else {
-        setPlannerNearestStation({name:"", source:"notfound"});
-      }
-    } catch(e) {}
-    setStationSearchBusy(false);
   };
 
   // ── Share Journey ─────────────────────────────────────────────────────────
@@ -2518,43 +2516,101 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
                   </div>
                 )}
 
-                {/* Nearest Station — Google Maps picker + OSM auto-fill */}
+                {/* Nearest Station — known stations + Google Maps + editable */}
                 <div style={{marginTop:10,background:"rgba(0,0,0,0.2)",
-                  border:`1px solid ${C.border}`,borderRadius:11,padding:"11px 12px"}}>
-                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>🚉 NEAREST METRO STATION</div>
+                  border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 13px"}}>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:9}}>
+                    🚉 YOUR STARTING METRO STATION
+                  </div>
 
-                  {stationSearchBusy ? (
-                    <div style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:C.muted,marginBottom:8}}>
-                      <span style={{animation:"spin 1s linear infinite",display:"inline-block",fontSize:14}}>⚙️</span>
-                      Searching via OpenStreetMap…
-                    </div>
-                  ) : null}
+                  {/* Station name — Claude auto-fills, user can correct */}
+                  <div style={{marginBottom:8}}>
 
-                  {/* Editable station name — always visible */}
-                  <input
-                    value={plannerNearestStation?.name||""}
-                    onChange={e=>setPlannerNearestStation(s=>({...(s||{}),name:e.target.value,source:"edited"}))}
-                    placeholder="Station name auto-fills below — or type manually…"
-                    style={{width:"100%",background:"rgba(0,0,0,0.35)",
-                      border:`1.5px solid ${plannerNearestStation?.name?C.emerald+"77":acc+"44"}`,
-                      borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,
-                      fontWeight:plannerNearestStation?.name?700:400,
-                      outline:"none",boxSizing:"border-box",marginBottom:6}}/>
-
-                  {plannerNearestStation?.name&&(
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                      <div style={{fontSize:9,background:plannerNearestStation.source==="edited"?`${acc}18`:`${C.emerald}18`,
-                        color:plannerNearestStation.source==="edited"?acc:C.emerald,
-                        borderRadius:5,padding:"2px 7px",fontWeight:600}}>
-                        {plannerNearestStation.source==="edited"?"Edited ✏️":"OSM ✓"}
+                    {/* Claude searching state */}
+                    {plannerNearestStation?.source==="searching" && (
+                      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:11,
+                        color:C.muted,marginBottom:8,padding:"8px 10px",
+                        background:"rgba(255,255,255,0.03)",borderRadius:8}}>
+                        <span style={{animation:"spin 1s linear infinite",display:"inline-block",fontSize:14}}>🤖</span>
+                        Claude is finding the nearest station to your GPS…
                       </div>
-                      {plannerNearestStation.distKm&&<span style={{fontSize:9,color:C.muted}}>~{plannerNearestStation.distKm} km</span>}
-                      <span style={{fontSize:9,color:acc,cursor:"pointer",marginLeft:"auto"}}
-                        onClick={searchNearestStation}>↻ Re-search OSM</span>
+                    )}
+
+                    {/* Auto-filled result badge */}
+                    {plannerNearestStation?.name && plannerNearestStation.source!=="searching" && (
+                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:7,flexWrap:"wrap"}}>
+                        <div style={{fontSize:9,fontWeight:600,borderRadius:5,padding:"2px 7px",
+                          background:plannerNearestStation.source==="claude"?`rgba(0,212,170,0.15)`:`${acc}18`,
+                          color:plannerNearestStation.source==="claude"?C.emerald:acc}}>
+                          {plannerNearestStation.source==="claude"?"🤖 Claude AI":"✏️ Edited"}
+                        </div>
+                        {plannerNearestStation.distKm&&(
+                          <span style={{fontSize:9,color:C.muted}}>~{plannerNearestStation.distKm} km away</span>
+                        )}
+                        {plannerNearestStation.line&&(
+                          <span style={{fontSize:9,color:C.muted}}>· {plannerNearestStation.line}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Editable field — always visible */}
+                    <input
+                      value={plannerNearestStation?.source==="searching"?"":plannerNearestStation?.name||""}
+                      onChange={e=>{
+                        setPlannerNearestStation(s=>({...(s||{}),name:e.target.value,source:"edited"}));
+                      }}
+                      onBlur={()=>{
+                        if(plannerNearestStation?.name&&plannerLocation?.lat&&plannerLocation.lat!=="unknown"){
+                          setToStationMins("");
+                          autoFetchStationTime(toStationMode, plannerNearestStation.name, plannerLocation);
+                        }
+                      }}
+                      placeholder={plannerNearestStation?.source==="searching"
+                        ?"🤖 Finding station…"
+                        :"Station auto-fills when you tap 📍 · or type manually"}
+                      style={{width:"100%",background:"rgba(0,0,0,0.35)",
+                        border:`1.5px solid ${plannerNearestStation?.name&&plannerNearestStation.source!=="searching"?C.emerald+"77":C.border}`,
+                        borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,
+                        fontWeight:plannerNearestStation?.name&&plannerNearestStation.source!=="searching"?600:400,
+                        outline:"none",boxSizing:"border-box",marginBottom:5}}/>
+                    <div style={{fontSize:9,color:C.muted,lineHeight:1.6}}>
+                      {plannerNearestStation?.name&&plannerNearestStation.source!=="searching"
+                        ?"✓ Edit above if wrong — route time will recalculate automatically"
+                        :"Tap 📍 above to auto-detect your location and nearest station"}
+                    </div>
+                  </div>
+
+                  {/* Known stations quick-picks */}
+                  {city.stations && city.stations.length > 0 && (
+                    <div style={{marginBottom:9}}>
+                      <div style={{fontSize:9,color:C.muted,marginBottom:6}}>
+                        ⚡ OR PICK A KNOWN STATION:
+                      </div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {city.stations.map((s,i)=>{
+                          const active = plannerNearestStation?.name===s.stn;
+                          return(
+                            <button key={i} onClick={()=>{
+                              setPlannerNearestStation({name:s.stn,source:"known"});
+                              if(plannerLocation?.lat&&plannerLocation.lat!=="unknown"){
+                                setToStationMins("");
+                                autoFetchStationTime(toStationMode, s.stn, plannerLocation);
+                              }
+                            }} style={{
+                              background:active?`linear-gradient(135deg,${acc},${accB})`:"rgba(255,255,255,0.06)",
+                              color:active?"#000":C.textDim,
+                              border:`1px solid ${active?"transparent":C.border}`,
+                              borderRadius:8,padding:"5px 10px",cursor:"pointer",
+                              fontSize:10,transition:"all 0.15s"}}>
+                              {s.stn}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
-                  {/* Google Maps station finder — primary action */}
+                  {/* Google Maps finder */}
                   <button onClick={()=>{
                     const lat=plannerLocation?.lat, lng=plannerLocation?.lng;
                     const url=(lat&&lat!=="unknown")
@@ -2563,15 +2619,14 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
                     window.open(url,"_blank");
                   }} style={{
                     width:"100%",background:"linear-gradient(135deg,#1A73E8,#4285F4)",
-                    border:"none",borderRadius:10,padding:"11px",
-                    cursor:"pointer",fontWeight:700,fontSize:13,color:"#fff",
-                    display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-                    boxShadow:"0 3px 12px rgba(26,115,232,0.4)",marginBottom:6}}>
-                    <span style={{fontSize:16}}>🗺️</span>
-                    Find Nearest Metro Station on Google Maps
+                    border:"none",borderRadius:10,padding:"10px",
+                    cursor:"pointer",fontWeight:700,fontSize:12,color:"#fff",
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:7,
+                    boxShadow:"0 3px 10px rgba(26,115,232,0.35)"}}>
+                    🗺️ Confirm on Google Maps — Find Nearest Station
                   </button>
-                  <div style={{fontSize:9,color:C.muted,textAlign:"center",lineHeight:1.6}}>
-                    Google Maps opens showing metro stations near you → note the closest station name → type it in the field above
+                  <div style={{fontSize:9,color:C.muted,textAlign:"center",marginTop:5,lineHeight:1.6}}>
+                    Opens Google Maps pre-zoomed to your location · note the nearest metro station name · type it above
                   </div>
                 </div>
               </div>
