@@ -69,8 +69,7 @@
     @keyframes shimmer {0%,100%{opacity:.7}      50%{opacity:.3}}
     @keyframes fadeIn  {from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     @keyframes slideUp {from{transform:translateY(100%)}to{transform:translateY(0)}}
-    @keyframes spin    {to{transform:rotate(360deg)}}
-    @keyframes glow    {0%,100%{box-shadow:0 0 8px rgba(255,107,26,.3)}50%{box-shadow:0 0 22px rgba(255,107,26,.7)}}
+    @keyframes spin    {to{transform:rotate(360deg)}}    @keyframes glow    {0%,100%{box-shadow:0 0 8px rgba(255,107,26,.3)}50%{box-shadow:0 0 22px rgba(255,107,26,.7)}}
     .route-card {animation:fadeIn .35s ease forwards}
     .modal-sheet{animation:slideUp .35s cubic-bezier(.32,.72,0,1) forwards}
     .spin{animation:spin 1s linear infinite;display:inline-block}
@@ -741,7 +740,52 @@ const cacheAge = (entry) => {
   return `${Math.round(ms/86400000)}d ago`;
 };
 
-// ── AI ROUTE FETCH (persistent cache + model fallback + token tracking) ───────
+// ── FREE ROUTING (Nominatim geocode + OSRM routing) ─────────────────────────
+// No API key required — uses OpenStreetMap data
+
+const OSM_PROFILES = {
+  walk:  "foot",
+  cycle: "bike",
+  bike:  "car",   // motorbike uses car profile (closest)
+  auto:  "car",
+  car:   "car",
+};
+
+async function nominatimSearch(query, lat, lng, radiusKm=5) {
+  const box = `${lng-radiusKm*0.01},${lat+radiusKm*0.01},${lng+radiusKm*0.01},${lat-radiusKm*0.01}`;
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=3&viewbox=${box}&bounded=0&accept-language=en`;
+  const res = await fetch(url, {headers:{"User-Agent":"Tranzit-App/1.0"}});
+  const data = await res.json();
+  return data.length ? {lat:parseFloat(data[0].lat), lng:parseFloat(data[0].lon), name:data[0].display_name} : null;
+}
+
+async function osrmRouteTime(fromLat, fromLng, toLat, toLng, profile) {
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=false`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if(data.code !== "Ok" || !data.routes?.[0]) return null;
+  return Math.ceil(data.routes[0].duration / 60); // seconds → minutes, rounded up
+}
+
+// Main: get real routing time from user coords to a station
+async function getStationRouteTime(userLat, userLng, stationName, cityName, mode) {
+  const profile = OSM_PROFILES[mode] || "foot";
+  // Try to geocode the station
+  const station = await nominatimSearch(`${stationName} ${cityName}`, userLat, userLng);
+  if(!station) return null;
+  const mins = await osrmRouteTime(userLat, userLng, station.lat, station.lng, profile);
+  return {mins, stationCoords:{lat:station.lat, lng:station.lng}};
+}
+
+// Find nearest metro/subway station to user's GPS
+async function findNearestMetroStation(lat, lng, cityName) {
+  // Try subway station, then metro station, then train station
+  for(const q of ["subway station","metro station","railway station"]) {
+    const result = await nominatimSearch(`${q} near ${cityName}`, lat, lng);
+    if(result) return result;
+  }
+  return null;
+}
 async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChange) {
   const key = cacheKey(city.code, from, to);
 
@@ -1537,6 +1581,43 @@ function TranzitApp(){
   const [plannerLocBusy, setPlannerLocBusy]= useState(false);
   const [toStationMode,  setToStationMode]  = useState("walk");
   const [toStationMins,  setToStationMins]  = useState("");
+  const [toStationBusy,  setToStationBusy]  = useState(false);
+  const [toStationError, setToStationError] = useState("");
+
+  // Auto-fetch routing time when mode changes (needs GPS + station)
+  const autoFetchStationTime = async (mode, knownStationName) => {
+    // Need GPS first
+    let coords = plannerLocation;
+    if(!coords || coords.lat==="unknown") {
+      try { coords = await getLocation(); setPlannerLocation(coords); }
+      catch(e) { setToStationError("Enable location access to auto-fetch time."); return; }
+    }
+    setToStationBusy(true); setToStationMins(""); setToStationError("");
+    try {
+      const stationName = knownStationName || (plannerResult?.nearestStation) || "";
+      let result = null;
+      if(stationName) {
+        result = await getStationRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), stationName, city.name, mode);
+      }
+      if(!result) {
+        // Find nearest station automatically
+        const nearest = await findNearestMetroStation(parseFloat(coords.lat), parseFloat(coords.lng), city.name);
+        if(nearest) {
+          const mins = await osrmRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), nearest.lat, nearest.lng, OSM_PROFILES[mode]||"foot");
+          if(mins) result = {mins};
+        }
+      }
+      if(result?.mins) {
+        setToStationMins(String(result.mins));
+        setToStationError("");
+      } else {
+        setToStationError("Could not auto-fetch. Check on Google Maps manually.");
+      }
+    } catch(e) {
+      setToStationError("Auto-fetch failed. Check Google Maps manually.");
+    }
+    setToStationBusy(false);
+  };
 
   // ── Share Journey state ──
   const [shareOpen,      setShareOpen]      = useState(false);
@@ -2367,71 +2448,87 @@ Respond ONLY with a valid JSON object, no markdown:
               {/* Mode grid */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:7,marginBottom:12}}>
                 {[
-                  {id:"walk",  icon:"🚶", label:"Walk",    typical:10, gmMode:"walking"},
-                  {id:"cycle", icon:"🚲", label:"Cycle",   typical:6,  gmMode:"bicycling"},
-                  {id:"bike",  icon:"🛵", label:"Bike",    typical:4,  gmMode:"driving"},
-                  {id:"auto",  icon:"🛺", label:"Auto",    typical:7,  gmMode:"driving"},
-                  {id:"car",   icon:"🚗", label:"Car/Cab", typical:5,  gmMode:"driving"},
+                  {id:"walk",  icon:"🚶", label:"Walk",    gmMode:"walking"},
+                  {id:"cycle", icon:"🚲", label:"Cycle",   gmMode:"bicycling"},
+                  {id:"bike",  icon:"🛵", label:"Bike",    gmMode:"driving"},
+                  {id:"auto",  icon:"🛺", label:"Auto",    gmMode:"driving"},
+                  {id:"car",   icon:"🚗", label:"Car/Cab", gmMode:"driving"},
                 ].map(m=>(
                   <button key={m.id} onClick={()=>{
                     setToStationMode(m.id);
-                    if(!toStationMins) setToStationMins(String(m.typical));
+                    setToStationMins(""); // clear — will auto-fetch
+                    autoFetchStationTime(m.id);
                   }} style={{
                     background:toStationMode===m.id?`linear-gradient(135deg,${acc},${accB})`:"rgba(255,255,255,0.04)",
                     border:`1px solid ${toStationMode===m.id?"transparent":C.border}`,
                     borderRadius:10,padding:"10px 4px",cursor:"pointer",textAlign:"center"}}>
                     <div style={{fontSize:18,marginBottom:3}}>{m.icon}</div>
                     <div style={{fontSize:9,fontWeight:600,color:toStationMode===m.id?"#000":C.textDim}}>{m.label}</div>
-                    <div style={{fontSize:8,color:toStationMode===m.id?"rgba(0,0,0,0.6)":C.muted,marginTop:1}}>~{m.typical}m</div>
                   </button>
                 ))}
               </div>
 
-              {/* Time to station — editable */}
+              {/* Auto-fetched time display */}
               <div style={{marginBottom:10}}>
                 <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:5}}>
-                  ⏱ ESTIMATED TIME TO REACH STATION (minutes)
+                  ⏱ TIME TO REACH STATION
                 </div>
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <input type="number" min="1" max="90"
-                    value={toStationMins}
-                    onChange={e=>setToStationMins(e.target.value)}
-                    placeholder="e.g. 8"
-                    style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
-                      borderRadius:9,padding:"8px 12px",color:C.text,fontSize:14,
-                      fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      outline:"none",boxSizing:"border-box",textAlign:"center"}}/>
-                  <div style={{fontSize:11,color:C.muted}}>minutes</div>
+                  <div style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1.5px solid ${toStationMins?acc+"88":C.border}`,
+                    borderRadius:9,padding:"10px 14px",
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:8,minHeight:44}}>
+                    {toStationBusy ? (
+                      <><span style={{fontSize:14,animation:"spin 1s linear infinite",display:"inline-block"}}>⚙️</span>
+                        <span style={{fontSize:12,color:C.muted}}>Fetching real route time…</span></>
+                    ) : toStationMins ? (
+                      <><span style={{fontFamily:"'DM Mono',monospace",fontSize:24,fontWeight:700,color:acc}}>{toStationMins}</span>
+                        <span style={{fontSize:13,color:C.textDim}}>minutes</span>
+                        <span style={{fontSize:10,background:`${C.emerald}18`,color:C.emerald,
+                          borderRadius:5,padding:"2px 7px",marginLeft:4}}>via OpenStreetMap</span></>
+                    ) : toStationError ? (
+                      <span style={{fontSize:11,color:"#F5A623"}}>{toStationError}</span>
+                    ) : (
+                      <span style={{fontSize:11,color:C.muted}}>Select a mode above to auto-fetch time</span>
+                    )}
+                  </div>
+                  {/* Manual override */}
+                  <button onClick={()=>{
+                    const v = prompt("Enter time in minutes manually:");
+                    if(v&&!isNaN(parseInt(v))) setToStationMins(String(parseInt(v)));
+                  }} style={{flexShrink:0,background:"rgba(255,255,255,0.05)",
+                    border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 11px",
+                    cursor:"pointer",color:C.muted,fontSize:11}}>
+                    ✏️
+                  </button>
                 </div>
-                <div style={{fontSize:9,color:C.muted,marginTop:4,lineHeight:1.5}}>
-                  Not sure? Check on Google Maps first ↓
-                </div>
+                {toStationMins&&!toStationBusy&&(
+                  <div style={{fontSize:9,color:C.muted,marginTop:4}}>
+                    Tap ✏️ to override manually · <span style={{color:acc,cursor:"pointer"}}
+                      onClick={()=>autoFetchStationTime(toStationMode)}>↻ Re-fetch</span>
+                  </div>
+                )}
               </div>
 
-              {/* Check on Google Maps buttons */}
+              {/* Manual Google Maps fallback */}
               {(plannerLocation||plannerOrigin)&&(
                 <div>
                   <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:6}}>
-                    📍 CHECK TRAVEL TIME ON GOOGLE MAPS
+                    📍 VERIFY ON GOOGLE MAPS (if auto-fetch seems wrong)
                   </div>
                   <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
                     {[
-                      {id:"walk",  icon:"🚶", label:"Walking time",   gmMode:"walking"},
-                      {id:"cycle", icon:"🚲", label:"Cycling time",   gmMode:"bicycling"},
-                      {id:"auto",  icon:"🛺", label:"Driving time",   gmMode:"driving"},
+                      {id:"walk",  icon:"🚶", label:"Walking",  gmMode:"walking"},
+                      {id:"cycle", icon:"🚲", label:"Cycling",  gmMode:"bicycling"},
+                      {id:"auto",  icon:"🛺", label:"Driving",  gmMode:"driving"},
                     ].map(m=>(
                       <button key={m.id} onClick={()=>{
                         const origin = plannerLocation&&plannerLocation.lat!=="unknown"
                           ? `${plannerLocation.lat},${plannerLocation.lng}`
                           : encodeURIComponent(plannerOrigin||city.name);
-                        // Open Google Maps directions — user sees exact time for this mode
-                        // Using a generic "metro station near me" as placeholder destination
                         const dest = encodeURIComponent(`metro station near ${plannerOrigin||city.name}`);
-                        const url = `https://www.google.com/maps/dir/${origin}/${dest}/?travelmode=${m.gmMode}`;
-                        window.open(url,"_blank");
+                        window.open(`https://www.google.com/maps/dir/${origin}/${dest}/?travelmode=${m.gmMode}`,"_blank");
                       }} style={{
-                        background:"rgba(26,115,232,0.10)",
-                        border:"1px solid rgba(26,115,232,0.3)",
+                        background:"rgba(26,115,232,0.10)",border:"1px solid rgba(26,115,232,0.3)",
                         borderRadius:8,padding:"6px 10px",cursor:"pointer",
                         fontSize:10,color:"#4FC3F7",
                         display:"flex",alignItems:"center",gap:5}}>
@@ -2439,27 +2536,24 @@ Respond ONLY with a valid JSON object, no markdown:
                       </button>
                     ))}
                   </div>
-                  <div style={{fontSize:9,color:C.muted,marginTop:5,lineHeight:1.5}}>
-                    Google Maps will show the exact time. Enter that number in the minutes field above, then calculate.
-                  </div>
                 </div>
               )}
             </div>
 
             {/* Calculate button */}
             <button onClick={calcDepartureTime}
-              disabled={plannerLoading||!plannerDest||!plannerArrival}
+              disabled={plannerLoading||!plannerDest||!plannerArrival||toStationBusy}
               style={{width:"100%",
-                background:(plannerLoading||!plannerDest||!plannerArrival)
+                background:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)
                   ?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${acc},${accB})`,
                 border:"none",borderRadius:12,padding:"13px",
-                cursor:(plannerLoading||!plannerDest||!plannerArrival)?"not-allowed":"pointer",
+                cursor:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)?"not-allowed":"pointer",
                 fontWeight:700,fontSize:13,
-                color:(plannerLoading||!plannerDest||!plannerArrival)?C.muted:"#000",
+                color:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)?C.muted:"#000",
                 marginBottom:14,
-                boxShadow:(plannerLoading||!plannerDest||!plannerArrival)?"none":`0 4px 18px ${acc}44`,
+                boxShadow:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)?"none":`0 4px 18px ${acc}44`,
                 transition:"all 0.25s"}}>
-              {plannerLoading?"🤖 Calculating your journey…":"🕐 Calculate Departure Time"}
+              {toStationBusy?"⏳ Fetching route time…":plannerLoading?"🤖 Calculating your journey…":"🕐 Calculate Departure Time"}
             </button>
 
             {/* Error */}
