@@ -1529,9 +1529,12 @@ function TranzitApp(){
   // ── Journey Planner state ──
   const [plannerOpen,    setPlannerOpen]    = useState(false);
   const [plannerDest,    setPlannerDest]    = useState("");
+  const [plannerOrigin,  setPlannerOrigin]  = useState("");
   const [plannerArrival, setPlannerArrival] = useState("");
   const [plannerResult,  setPlannerResult]  = useState(null);
   const [plannerLoading, setPlannerLoading] = useState(false);
+  const [plannerLocation,setPlannerLocation]= useState(null); // {lat,lng}
+  const [plannerLocBusy, setPlannerLocBusy]= useState(false);
 
   // ── Share Journey state ──
   const [shareOpen,      setShareOpen]      = useState(false);
@@ -1702,32 +1705,65 @@ function TranzitApp(){
     if(!plannerDest||!plannerArrival) return;
     if(!apiKey) { setPlannerResult({error:"API key needed. Set it in ⚙️ Settings."}); return; }
     setPlannerLoading(true); setPlannerResult(null);
+
+    // Try to get live GPS if not already fetched
+    let coords = plannerLocation;
+    if(!coords) {
+      try {
+        coords = await getLocation();
+        setPlannerLocation(coords);
+      } catch(e) { coords = null; }
+    }
+
+    const originDesc = plannerOrigin.trim()
+      ? `Starting from: "${plannerOrigin}"`
+      : coords && coords.lat !== "unknown"
+        ? `Starting from: GPS coordinates ${coords.lat}, ${coords.lng} (use nearest known area name for context)`
+        : `Starting from: somewhere in ${city.name}`;
+
     const prompt = `You are a transit expert for ${city.name}, ${city.country}.
-A commuter needs to arrive at "${plannerDest}" by ${plannerArrival}.
-Transit system: ${city.transitLabel}. Current city: ${city.name}.
-Consider: typical peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.freqMins||5} min on main lines), walking time to station (~5-8 min), and platform wait.
+${originDesc}.
+Destination: "${plannerDest}". Must arrive by: ${plannerArrival}.
+Transit system: ${city.transitLabel}.
+
+Consider: peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.freqMins||5} min), walking time, platform wait, and travel from origin to nearest transit station.
 
 Respond ONLY with a valid JSON object, no markdown:
 {
-  "departBy": "HH:MM AM/PM — the latest safe departure time from home/origin",
-  "leaveBy": "specific time to leave for station",
-  "transitTime": <estimated minutes on transit>,
-  "walkTime": <minutes walking to/from station>,
+  "departBy": "HH:MM AM/PM — latest safe departure time from origin",
+  "nearestStation": "name of nearest transit station to start from",
+  "walkToStation": <minutes walk from origin to that station>,
+  "stationDistanceKm": <approximate distance in km from origin to station, e.g. 0.8>,
+  "transitTime": <minutes on transit>,
+  "walkFromStation": <minutes walk from arrival station to destination>,
   "bufferTime": <recommended buffer minutes>,
   "totalJourney": <total minutes door to door>,
-  "route": "recommended route description",
+  "route": "full route: origin → station → transit line → destination",
+  "googleMapsQuery": "station name + city for Google Maps search e.g. Ameerpet Metro Station Hyderabad",
   "tip": "one practical tip for this journey",
   "peakWarning": true or false
 }`;
+
     try {
-      const {res} = await callWithFallback(apiKey,(modelId)=>({model:modelId,max_tokens:400,messages:[{role:"user",content:prompt}]}),null);
+      const {res} = await callWithFallback(apiKey,(modelId)=>({model:modelId,max_tokens:500,messages:[{role:"user",content:prompt}]}),null);
       const data = await res.json();
       const raw = data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim();
-      setPlannerResult(JSON.parse(raw));
+      const obj = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}")+1));
+      setPlannerResult({...obj, _coords: coords});
     } catch(e) {
       setPlannerResult({error:`Could not calculate: ${e.message}`});
     }
     setPlannerLoading(false);
+  };
+
+  const fetchPlannerLocation = async () => {
+    setPlannerLocBusy(true);
+    try {
+      const c = await getLocation();
+      setPlannerLocation(c);
+      setPlannerOrigin("📍 My current location");
+    } catch(e) {}
+    setPlannerLocBusy(false);
   };
 
   // ── Share Journey ─────────────────────────────────────────────────────────
@@ -2219,19 +2255,47 @@ Respond ONLY with a valid JSON object, no markdown:
           <div>
             {/* Hero */}
             <div style={{background:`linear-gradient(135deg,${acc}16,${accB}0C)`,border:`1px solid ${acc}33`,
-              borderRadius:16,padding:"16px",marginBottom:14,textAlign:"center"}}>
-              <div style={{fontSize:28,marginBottom:6}}>🕐</div>
+              borderRadius:16,padding:"14px 16px",marginBottom:14,textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>🕐</div>
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.08em",
                 background:`linear-gradient(135deg,${acc},${accB})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
                 JOURNEY PLANNER
               </div>
-              <div style={{fontSize:11,color:C.textDim,marginTop:4}}>
-                Tell us when you need to arrive — we'll tell you when to leave
+              <div style={{fontSize:11,color:C.textDim,marginTop:3}}>
+                Tell us where you are and when you need to arrive — we'll tell you exactly when to leave
               </div>
             </div>
 
-            {/* Inputs */}
+            {/* Input card */}
             <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px",marginBottom:12}}>
+
+              {/* STARTING FROM */}
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:6}}>
+                  <span style={{color:C.emerald}}>●</span>&nbsp; STARTING FROM
+                </div>
+                <div style={{display:"flex",gap:7}}>
+                  <input value={plannerOrigin} onChange={e=>setPlannerOrigin(e.target.value)}
+                    placeholder={`e.g. ${city.defaultFrom}, Home address, Hotel…`}
+                    style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
+                      borderRadius:9,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                  <button onClick={fetchPlannerLocation} disabled={plannerLocBusy}
+                    title="Use my current location"
+                    style={{flexShrink:0,background:plannerLocation?`${C.emerald}22`:`${acc}18`,
+                      border:`1px solid ${plannerLocation?C.emerald:acc+"55"}`,
+                      borderRadius:9,padding:"0 12px",cursor:"pointer",fontSize:16,
+                      color:plannerLocation?C.emerald:acc,transition:"all 0.2s"}}>
+                    {plannerLocBusy?"⏳":"📍"}
+                  </button>
+                </div>
+                {plannerLocation&&plannerLocation.lat!=="unknown"&&(
+                  <div style={{fontSize:9,color:C.emerald,marginTop:4}}>
+                    ✓ GPS: {plannerLocation.lat}, {plannerLocation.lng}
+                  </div>
+                )}
+              </div>
+
+              {/* I NEED TO REACH */}
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:6}}>
                   <span style={{color:C.crimson}}>●</span>&nbsp; I NEED TO REACH
@@ -2239,11 +2303,13 @@ Respond ONLY with a valid JSON object, no markdown:
                 <input value={plannerDest} onChange={e=>setPlannerDest(e.target.value)}
                   placeholder={`e.g. ${city.defaultTo}, Office, Airport…`}
                   style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
-                    borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    borderRadius:9,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
               </div>
+
+              {/* BY WHAT TIME */}
               <div>
                 <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:6}}>
-                  <span style={{color:C.emerald}}>●</span>&nbsp; BY WHAT TIME
+                  <span style={{color:C.sky}}>●</span>&nbsp; MUST ARRIVE BY
                 </div>
                 <input type="time" value={plannerArrival} onChange={e=>setPlannerArrival(e.target.value)}
                   style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
@@ -2252,16 +2318,20 @@ Respond ONLY with a valid JSON object, no markdown:
               </div>
             </div>
 
-            {/* Quick arrival shortcuts */}
+            {/* Quick times — full 24h spread */}
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>⚡ QUICK TIMES</div>
-              <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                {["07:00","08:00","08:30","09:00","09:30","10:00"].map(t=>(
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>⚡ QUICK ARRIVAL TIMES</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {["05:00","05:30","06:00","06:30","07:00","07:30","08:00","08:30",
+                  "09:00","09:30","10:00","11:00","12:00","13:00","14:00","15:00",
+                  "16:00","17:00","17:30","18:00","18:30","19:00","20:00","21:00",
+                  "22:00","23:00"].map(t=>(
                   <button key={t} onClick={()=>setPlannerArrival(t)} style={{
                     background:plannerArrival===t?`linear-gradient(135deg,${acc},${accB})`:C.surface,
                     color:plannerArrival===t?"#000":C.textDim,
                     border:`1px solid ${plannerArrival===t?"transparent":C.border}`,
-                    borderRadius:8,padding:"5px 11px",cursor:"pointer",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
+                    borderRadius:7,padding:"4px 9px",cursor:"pointer",
+                    fontSize:10,fontFamily:"'DM Mono',monospace",transition:"all 0.15s"}}>
                     {t}
                   </button>
                 ))}
@@ -2281,78 +2351,144 @@ Respond ONLY with a valid JSON object, no markdown:
                 marginBottom:14,
                 boxShadow:(plannerLoading||!plannerDest||!plannerArrival)?"none":`0 4px 18px ${acc}44`,
                 transition:"all 0.25s"}}>
-              {plannerLoading?"🤖 Calculating…":"🕐 Calculate Departure Time"}
+              {plannerLoading?"🤖 Calculating your journey…":"🕐 Calculate Departure Time"}
             </button>
 
-            {/* Result */}
-            {plannerResult&&!plannerLoading&&(
-              plannerResult.error ? (
-                <div style={{background:"rgba(255,68,102,0.09)",border:"1px solid rgba(255,68,102,0.3)",
-                  borderRadius:11,padding:"12px 14px",fontSize:12,color:C.crimson,animation:"fadeIn 0.3s ease"}}>
-                  ⚠️ {plannerResult.error}
+            {/* Error */}
+            {plannerResult?.error&&(
+              <div style={{background:"rgba(255,68,102,0.09)",border:"1px solid rgba(255,68,102,0.3)",
+                borderRadius:11,padding:"12px 14px",fontSize:12,color:C.crimson,animation:"fadeIn 0.3s ease",marginBottom:10}}>
+                ⚠️ {plannerResult.error}
+              </div>
+            )}
+
+            {/* Results */}
+            {plannerResult&&!plannerResult.error&&!plannerLoading&&(
+              <div style={{animation:"fadeIn 0.35s ease"}}>
+
+                {/* Peak warning */}
+                {plannerResult.peakWarning&&(
+                  <div style={{background:"rgba(245,166,35,0.13)",border:"1px solid rgba(245,166,35,0.35)",
+                    borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#F5A623",fontWeight:600,
+                    display:"flex",alignItems:"center",gap:7}}>
+                    ⚠️ Peak hour detected — extra buffer time included
+                  </div>
+                )}
+
+                {/* LEAVE BY hero */}
+                <div style={{background:`linear-gradient(135deg,${acc}18,${accB}0C)`,
+                  border:`1px solid ${acc}44`,borderRadius:16,padding:"18px",marginBottom:12,textAlign:"center"}}>
+                  <div style={{fontSize:10,color:C.muted,letterSpacing:"0.14em",marginBottom:4}}>LEAVE BY</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:44,fontWeight:700,color:acc,lineHeight:1}}>
+                    {plannerResult.departBy?.split("—")[0]?.trim()||plannerResult.departBy}
+                  </div>
+                  <div style={{fontSize:11,color:C.textDim,marginTop:6}}>
+                    from <strong style={{color:C.text}}>{plannerOrigin||"your location"}</strong>
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                    to reach <strong style={{color:C.text}}>{plannerDest}</strong> by {plannerArrival}
+                  </div>
                 </div>
-              ) : (
-                <div style={{animation:"fadeIn 0.35s ease"}}>
-                  {/* Main result card */}
-                  <div style={{background:`linear-gradient(135deg,${acc}18,${accB}0C)`,
-                    border:`1px solid ${acc}44`,borderRadius:16,padding:"18px",marginBottom:12,textAlign:"center"}}>
-                    {plannerResult.peakWarning&&(
-                      <div style={{background:"rgba(245,166,35,0.15)",border:"1px solid rgba(245,166,35,0.3)",
-                        borderRadius:8,padding:"6px 10px",marginBottom:12,fontSize:10,color:"#F5A623",fontWeight:600}}>
-                        ⚠️ Peak hour — allow extra buffer time
-                      </div>
-                    )}
-                    <div style={{fontSize:10,color:C.muted,letterSpacing:"0.12em",marginBottom:4}}>LEAVE BY</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:42,fontWeight:700,color:acc,lineHeight:1}}>
-                      {plannerResult.departBy?.split("—")[0]?.trim()||plannerResult.departBy}
+
+                {/* NEAREST STATION + Google Maps */}
+                {plannerResult.nearestStation&&(
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderRadius:13,padding:14,marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:10,letterSpacing:"0.08em"}}>
+                      🚉 YOUR STARTING STATION
                     </div>
-                    <div style={{fontSize:11,color:C.textDim,marginTop:6}}>
-                      to reach <strong style={{color:C.text}}>{plannerDest}</strong> by {plannerArrival}
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{width:40,height:40,borderRadius:10,
+                        background:`linear-gradient(135deg,${acc}22,${accB}14)`,
+                        border:`1px solid ${acc}44`,display:"flex",alignItems:"center",
+                        justifyContent:"center",fontSize:18,flexShrink:0}}>🚇</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14,color:C.text}}>{plannerResult.nearestStation}</div>
+                        <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                          {plannerResult.stationDistanceKm&&`~${plannerResult.stationDistanceKm} km away · `}
+                          {plannerResult.walkToStation&&`~${plannerResult.walkToStation} min walk`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Google Maps navigate button */}
+                    <button onClick={()=>{
+                      const q = plannerResult.googleMapsQuery||plannerResult.nearestStation;
+                      const dest = encodeURIComponent(q);
+                      let url;
+                      if(plannerResult._coords&&plannerResult._coords.lat!=="unknown") {
+                        const {lat,lng} = plannerResult._coords;
+                        url = `https://www.google.com/maps/dir/${lat},${lng}/${dest}/`;
+                      } else {
+                        url = `https://www.google.com/maps/search/${dest}`;
+                      }
+                      window.open(url,"_blank");
+                    }} style={{
+                      width:"100%",
+                      background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+                      border:"none",borderRadius:10,padding:"11px",
+                      cursor:"pointer",fontWeight:700,fontSize:13,color:"#fff",
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                      boxShadow:"0 3px 12px rgba(26,115,232,0.4)"}}>
+                      <span style={{fontSize:16}}>🗺️</span>
+                      Navigate to Station via Google Maps
+                    </button>
+
+                    <div style={{fontSize:9,color:C.muted,marginTop:6,textAlign:"center"}}>
+                      Opens Google Maps with walking/driving directions to the station
                     </div>
                   </div>
+                )}
 
-                  {/* Breakdown */}
-                  <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
-                    <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>⏱ TIME BREAKDOWN</div>
-                    {[
-                      {l:"Walk to station",v:`${plannerResult.walkTime} min`,c:C.sky},
-                      {l:"Transit time",v:`${plannerResult.transitTime} min`,c:accB},
-                      {l:"Safety buffer",v:`${plannerResult.bufferTime} min`,c:C.emerald},
-                      {l:"Total door-to-door",v:`${plannerResult.totalJourney} min`,c:acc,bold:true},
-                    ].map((row,i)=>(
-                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                        padding:"8px 0",borderBottom:i<3?`1px solid rgba(255,255,255,0.05)`:"none"}}>
-                        <div style={{fontSize:12,color:row.bold?C.text:C.textDim,fontWeight:row.bold?700:400}}>{row.l}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:row.c}}>{row.v}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Route suggestion */}
-                  {plannerResult.route&&(
-                    <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}}>
-                      <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:6}}>🚇 SUGGESTED ROUTE</div>
-                      <div style={{fontSize:12,color:C.text,lineHeight:1.6}}>{plannerResult.route}</div>
+                {/* Journey breakdown */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>⏱ FULL JOURNEY BREAKDOWN</div>
+                  {[
+                    {l:"Walk to station",        v:plannerResult.walkToStation!=null?`${plannerResult.walkToStation} min`:"—", c:C.sky,   icon:"🚶"},
+                    {l:"Transit time",            v:`${plannerResult.transitTime} min`,                                          c:accB,      icon:"🚇"},
+                    {l:"Walk to destination",     v:plannerResult.walkFromStation!=null?`${plannerResult.walkFromStation} min`:"—",c:C.sky,  icon:"🚶"},
+                    {l:"Safety buffer",           v:`${plannerResult.bufferTime} min`,                                           c:C.emerald, icon:"🛡️"},
+                    {l:"Total door-to-door",      v:`${plannerResult.totalJourney} min`,                                         c:acc,       icon:"📍", bold:true},
+                  ].map((row,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:9,
+                      padding:"8px 0",borderBottom:i<4?`1px solid rgba(255,255,255,0.05)`:"none"}}>
+                      <span style={{fontSize:13,flexShrink:0}}>{row.icon}</span>
+                      <div style={{flex:1,fontSize:12,color:row.bold?C.text:C.textDim,fontWeight:row.bold?700:400}}>{row.l}</div>
+                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:row.c}}>{row.v}</div>
                     </div>
-                  )}
-
-                  {/* AI tip */}
-                  {plannerResult.tip&&(
-                    <div style={{background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.18)",
-                      borderRadius:11,padding:"10px 13px",fontSize:11,color:C.textDim,lineHeight:1.65}}>
-                      🤖 {plannerResult.tip}
-                    </div>
-                  )}
+                  ))}
                 </div>
-              )
+
+                {/* Route suggestion */}
+                {plannerResult.route&&(
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}}>
+                    <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:6}}>🗺️ FULL ROUTE</div>
+                    <div style={{fontSize:12,color:C.text,lineHeight:1.7}}>{plannerResult.route}</div>
+                  </div>
+                )}
+
+                {/* AI tip */}
+                {plannerResult.tip&&(
+                  <div style={{background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.18)",
+                    borderRadius:11,padding:"10px 13px",fontSize:11,color:C.textDim,lineHeight:1.65,marginBottom:10}}>
+                    🤖 {plannerResult.tip}
+                  </div>
+                )}
+
+                {/* Disclaimer */}
+                <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,
+                  borderRadius:10,padding:"9px 12px",fontSize:9,color:C.muted,lineHeight:1.6}}>
+                  ⚠️ Times are AI estimates. Always verify departure times and platform details with the official {city.transitLabel} app or website before travel.
+                </div>
+              </div>
             )}
 
             {/* Empty state */}
             {!plannerResult&&!plannerLoading&&(
-              <div style={{textAlign:"center",padding:"20px 0",color:C.muted}}>
+              <div style={{textAlign:"center",padding:"18px 0",color:C.muted}}>
                 <div style={{fontSize:32,marginBottom:8}}>🗓️</div>
-                <div style={{fontSize:12,color:C.textDim}}>Enter your destination and target arrival time</div>
-                <div style={{fontSize:10,marginTop:4}}>AI calculates your ideal departure time for {city.name}</div>
+                <div style={{fontSize:12,color:C.textDim}}>Enter your starting point, destination and arrival time</div>
+                <div style={{fontSize:10,marginTop:4}}>AI calculates your departure time and shows how to reach your transit station</div>
               </div>
             )}
           </div>
