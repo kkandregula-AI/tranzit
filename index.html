@@ -744,11 +744,11 @@ const cacheAge = (entry) => {
 // No API key required — uses OpenStreetMap data
 
 const OSM_PROFILES = {
-  walk:  "foot",
-  cycle: "bike",
-  bike:  "car",   // motorbike uses car profile (closest)
-  auto:  "car",
-  car:   "car",
+  walk:  {profile:"foot", multiplier:1.0,  note:""},
+  cycle: {profile:"bike", multiplier:1.0,  note:""},
+  bike:  {profile:"car",  multiplier:0.75, note:"Bikes filter traffic (~25% faster than car)"},
+  auto:  {profile:"car",  multiplier:1.25, note:"Autos slower in city traffic"},
+  car:   {profile:"car",  multiplier:1.4,  note:"Includes city traffic & signal waits"},
 };
 
 async function nominatimSearch(query, lat, lng, radiusKm=5) {
@@ -769,20 +769,52 @@ async function osrmRouteTime(fromLat, fromLng, toLat, toLng, profile) {
 
 // Main: get real routing time from user coords to a station
 async function getStationRouteTime(userLat, userLng, stationName, cityName, mode) {
-  const profile = OSM_PROFILES[mode] || "foot";
+  const modeConfig = OSM_PROFILES[mode] || OSM_PROFILES.walk;
+  const profile = modeConfig.profile;
+  const multiplier = modeConfig.multiplier;
   // Try to geocode the station
   const station = await nominatimSearch(`${stationName} ${cityName}`, userLat, userLng);
   if(!station) return null;
-  const mins = await osrmRouteTime(userLat, userLng, station.lat, station.lng, profile);
-  return {mins, stationCoords:{lat:station.lat, lng:station.lng}};
+  const rawMins = await osrmRouteTime(userLat, userLng, station.lat, station.lng, profile);
+  if(rawMins===null) return null;
+  const adjustedMins = Math.max(1, Math.round(rawMins * multiplier));
+  return {mins: adjustedMins, stationCoords:{lat:station.lat, lng:station.lng}, note:modeConfig.note};
 }
 
 // Find nearest metro/subway station to user's GPS
 async function findNearestMetroStation(lat, lng, cityName) {
-  // Try subway station, then metro station, then train station
-  for(const q of ["subway station","metro station","railway station"]) {
-    const result = await nominatimSearch(`${q} near ${cityName}`, lat, lng);
-    if(result) return result;
+  // City-specific search terms ordered by likelihood
+  const queries = [
+    `metro station ${cityName}`,
+    `subway station ${cityName}`,
+    `MRT station ${cityName}`,
+    `underground station ${cityName}`,
+    `train station ${cityName}`,
+  ];
+  for(const q of queries) {
+    try {
+      // Tighter bounding box (3km radius) for nearest result
+      const box = `${lng-0.03},${lat+0.03},${lng+0.03},${lat-0.03}`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&viewbox=${box}&bounded=0&accept-language=en`;
+      const res = await fetch(url, {headers:{"User-Agent":"Tranzit-App/1.0"}});
+      const data = await res.json();
+      if(data.length) {
+        // Pick closest by straight-line distance
+        const closest = data.reduce((best, cur) => {
+          const dLat = parseFloat(cur.lat)-lat, dLng = parseFloat(cur.lon)-lng;
+          const d = Math.sqrt(dLat*dLat+dLng*dLng);
+          const dBest = best ? Math.sqrt(Math.pow(parseFloat(best.lat)-lat,2)+Math.pow(parseFloat(best.lon)-lng,2)) : Infinity;
+          return d < dBest ? cur : best;
+        }, null);
+        if(closest) {
+          // Extract clean station name (remove long address suffix)
+          let name = closest.display_name.split(",")[0].trim();
+          // Clean up common suffixes
+          name = name.replace(/\s*(Metro|Station|Stop|Halt)\s*(Station|Stop)?$/i, s => s.trim()).trim();
+          return {lat:parseFloat(closest.lat), lng:parseFloat(closest.lon), name};
+        }
+      }
+    } catch(e) { continue; }
   }
   return null;
 }
@@ -1583,18 +1615,22 @@ function TranzitApp(){
   const [toStationMins,  setToStationMins]  = useState("");
   const [toStationBusy,  setToStationBusy]  = useState(false);
   const [toStationError, setToStationError] = useState("");
+  const [plannerNearestStation, setPlannerNearestStation] = useState(null); // {name, lat, lng, source}
+  const [stationSearchBusy, setStationSearchBusy] = useState(false);
 
   // Auto-fetch routing time when mode changes (needs GPS + station)
-  const autoFetchStationTime = async (mode, knownStationName) => {
-    // Need GPS first
-    let coords = plannerLocation;
+  const autoFetchStationTime = async (mode, knownStationName, coordsOverride) => {
+    let coords = coordsOverride || plannerLocation;
     if(!coords || coords.lat==="unknown") {
       try { coords = await getLocation(); setPlannerLocation(coords); }
       catch(e) { setToStationError("Enable location access to auto-fetch time."); return; }
     }
     setToStationBusy(true); setToStationMins(""); setToStationError("");
     try {
-      const stationName = knownStationName || (plannerResult?.nearestStation) || "";
+      const stationName = knownStationName
+        || (plannerNearestStation?.name)
+        || (plannerResult?.nearestStation)
+        || "";
       let result = null;
       if(stationName) {
         result = await getStationRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), stationName, city.name, mode);
@@ -1603,13 +1639,14 @@ function TranzitApp(){
         // Find nearest station automatically
         const nearest = await findNearestMetroStation(parseFloat(coords.lat), parseFloat(coords.lng), city.name);
         if(nearest) {
-          const mins = await osrmRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), nearest.lat, nearest.lng, OSM_PROFILES[mode]||"foot");
-          if(mins) result = {mins};
+          const modeConfig = OSM_PROFILES[mode]||OSM_PROFILES.walk;
+          const rawMins = await osrmRouteTime(parseFloat(coords.lat), parseFloat(coords.lng), nearest.lat, nearest.lng, modeConfig.profile);
+          if(rawMins) result = {mins: Math.max(1, Math.round(rawMins * modeConfig.multiplier)), note:modeConfig.note};
         }
       }
       if(result?.mins) {
         setToStationMins(String(result.mins));
-        setToStationError("");
+        setToStationError(result.note ? `ℹ️ ${result.note}` : "");
       } else {
         setToStationError("Could not auto-fetch. Check on Google Maps manually.");
       }
@@ -1814,8 +1851,13 @@ function TranzitApp(){
         ? `Starting from: GPS coordinates ${coords.lat}, ${coords.lng}`
         : `Starting from: somewhere in ${city.name}`;
 
+    const stationHint = plannerNearestStation?.name
+      ? `The nearest metro station to the starting location (verified via OpenStreetMap) is: "${plannerNearestStation.name}". Use this as the boarding station.`
+      : "";
+
     const prompt = `You are a transit expert for ${city.name}, ${city.country}.
 ${originDesc}.
+${stationHint}
 Destination: "${plannerDest}". Must arrive by: ${plannerArrival}.
 Transit system: ${city.transitLabel}.
 
@@ -1829,7 +1871,7 @@ Consider: peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.fr
 Respond ONLY with a valid JSON object, no markdown:
 {
   "departBy": "HH:MM AM/PM — the latest safe time to LEAVE THEIR STARTING LOCATION",
-  "nearestStation": "name of the best transit station to board from given their location",
+  "nearestStation": "${plannerNearestStation?.name||'name of the best transit station to board from given their location'}",
   "timeToStation": ${minsToStn},
   "stationDistanceKm": <estimated km from origin to station>,
   "transitTime": <minutes on transit vehicle>,
@@ -1860,8 +1902,42 @@ Respond ONLY with a valid JSON object, no markdown:
       const c = await getLocation();
       setPlannerLocation(c);
       setPlannerOrigin("📍 My current location");
+      // Immediately search for nearest metro station via OpenStreetMap
+      if(c.lat !== "unknown") {
+        setStationSearchBusy(true);
+        try {
+          const station = await findNearestMetroStation(parseFloat(c.lat), parseFloat(c.lng), city.name);
+          if(station) {
+            setPlannerNearestStation({...station, source:"osm"});
+            // Also trigger auto-fetch of route time to this station
+            setToStationMins("");
+            autoFetchStationTime(toStationMode, station.name, c);
+          }
+        } catch(e) {}
+        setStationSearchBusy(false);
+      }
     } catch(e) {}
     setPlannerLocBusy(false);
+  };
+
+  const searchNearestStation = async () => {
+    let coords = plannerLocation;
+    if(!coords || coords.lat==="unknown") {
+      try { coords = await getLocation(); setPlannerLocation(coords); }
+      catch(e) { return; }
+    }
+    setStationSearchBusy(true);
+    try {
+      const station = await findNearestMetroStation(parseFloat(coords.lat), parseFloat(coords.lng), city.name);
+      if(station) {
+        setPlannerNearestStation({...station, source:"osm"});
+        setToStationMins("");
+        autoFetchStationTime(toStationMode, station.name, coords);
+      } else {
+        setPlannerNearestStation({name:"", source:"notfound"});
+      }
+    } catch(e) {}
+    setStationSearchBusy(false);
   };
 
   // ── Share Journey ─────────────────────────────────────────────────────────
@@ -2391,6 +2467,58 @@ Respond ONLY with a valid JSON object, no markdown:
                     ✓ GPS: {plannerLocation.lat}, {plannerLocation.lng}
                   </div>
                 )}
+
+                {/* Nearest Station — auto-populated from OSM */}
+                {(stationSearchBusy || plannerNearestStation) && (
+                  <div style={{marginTop:10,background:`${C.emerald}08`,
+                    border:`1px solid ${stationSearchBusy?"rgba(255,255,255,0.08)":C.emerald+"33"}`,
+                    borderRadius:10,padding:"10px 12px"}}>
+                    {stationSearchBusy ? (
+                      <div style={{display:"flex",alignItems:"center",gap:7,fontSize:11,color:C.muted}}>
+                        <span style={{animation:"spin 1s linear infinite",display:"inline-block",fontSize:14}}>⚙️</span>
+                        Finding nearest metro station via OpenStreetMap…
+                      </div>
+                    ) : plannerNearestStation?.source==="notfound" ? (
+                      <div style={{fontSize:11,color:"#F5A623"}}>
+                        ⚠️ Could not find a station nearby. Try entering the station name manually below.
+                      </div>
+                    ) : plannerNearestStation?.name ? (
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                          <span style={{fontSize:13}}>🚉</span>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:10,color:C.emerald,fontWeight:600,letterSpacing:"0.06em"}}>NEAREST STATION — via OpenStreetMap</div>
+                            <div style={{fontWeight:700,fontSize:14,color:C.text,marginTop:2}}>{plannerNearestStation.name}</div>
+                          </div>
+                          <div style={{fontSize:9,background:`${C.emerald}20`,color:C.emerald,
+                            borderRadius:5,padding:"2px 7px",fontWeight:600,flexShrink:0}}>OSM ✓</div>
+                        </div>
+                        {/* Editable in case wrong */}
+                        <input
+                          value={plannerNearestStation.name}
+                          onChange={e=>setPlannerNearestStation(s=>({...s,name:e.target.value}))}
+                          style={{width:"100%",background:"rgba(0,0,0,0.3)",
+                            border:`1px solid ${C.emerald}44`,borderRadius:8,
+                            padding:"7px 10px",color:C.text,fontSize:12,
+                            outline:"none",boxSizing:"border-box"}}/>
+                        <div style={{fontSize:9,color:C.muted,marginTop:4,display:"flex",justifyContent:"space-between"}}>
+                          <span>Edit above if the station name is wrong</span>
+                          <span style={{color:acc,cursor:"pointer"}} onClick={searchNearestStation}>↻ Re-search</span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {/* Manual search button if no GPS yet */}
+                {!plannerLocation&&!stationSearchBusy&&(
+                  <button onClick={searchNearestStation} style={{
+                    width:"100%",marginTop:8,background:"rgba(0,212,170,0.08)",
+                    border:`1px solid ${C.emerald}33`,borderRadius:8,padding:"8px",
+                    cursor:"pointer",fontSize:11,color:C.emerald,fontWeight:600}}>
+                    🔍 Find Nearest Station via OpenStreetMap
+                  </button>
+                )}
               </div>
 
               {/* I NEED TO REACH */}
@@ -2486,7 +2614,7 @@ Respond ONLY with a valid JSON object, no markdown:
                         <span style={{fontSize:10,background:`${C.emerald}18`,color:C.emerald,
                           borderRadius:5,padding:"2px 7px",marginLeft:4}}>via OpenStreetMap</span></>
                     ) : toStationError ? (
-                      <span style={{fontSize:11,color:"#F5A623"}}>{toStationError}</span>
+                      <span style={{fontSize:11,color:toStationError.startsWith("ℹ️")?"#F5A623":C.crimson,lineHeight:1.5}}>{toStationError}</span>
                     ) : (
                       <span style={{fontSize:11,color:C.muted}}>Select a mode above to auto-fetch time</span>
                     )}
