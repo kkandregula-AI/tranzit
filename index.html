@@ -2394,48 +2394,134 @@ Respond ONLY with a valid JSON object, no markdown:
                 {plannerResult.nearestStation&&(
                   <div style={{background:C.surface,border:`1px solid ${C.border}`,
                     borderRadius:13,padding:14,marginBottom:10}}>
-                    <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:10,letterSpacing:"0.08em"}}>
-                      🚉 YOUR STARTING STATION
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:600,color:acc,letterSpacing:"0.08em"}}>
+                        🚉 YOUR STARTING STATION
+                      </div>
+                      <div style={{fontSize:9,background:"rgba(245,166,35,0.15)",color:"#F5A623",
+                        borderRadius:5,padding:"2px 7px",fontWeight:600}}>AI ESTIMATE</div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <div style={{width:40,height:40,borderRadius:10,
-                        background:`linear-gradient(135deg,${acc}22,${accB}14)`,
-                        border:`1px solid ${acc}44`,display:"flex",alignItems:"center",
-                        justifyContent:"center",fontSize:18,flexShrink:0}}>🚇</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:700,fontSize:14,color:C.text}}>{plannerResult.nearestStation}</div>
-                        <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                          {plannerResult.stationDistanceKm&&`~${plannerResult.stationDistanceKm} km away · `}
-                          {plannerResult.walkToStation&&`~${plannerResult.walkToStation} min walk`}
-                        </div>
+
+                    {/* ⚠️ Accuracy warning */}
+                    <div style={{background:"rgba(245,166,35,0.10)",border:"1px solid rgba(245,166,35,0.3)",
+                      borderRadius:9,padding:"8px 11px",marginBottom:10,
+                      display:"flex",gap:7,alignItems:"flex-start"}}>
+                      <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
+                      <div style={{fontSize:10,color:"#F5A623",lineHeight:1.6}}>
+                        <strong>This station may not be accurate.</strong> The AI estimates the nearest station based on your area — it does not have precise GPS-to-station mapping. Please verify using the "Find Nearest Station" button below and correct the name if needed.
                       </div>
                     </div>
 
-                    {/* Google Maps navigate button */}
+                    {/* Editable station name */}
+                    <div style={{marginBottom:10}}>
+                      <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:5}}>
+                        STATION NAME — tap to correct if wrong
+                      </div>
+                      <input
+                        value={plannerResult.nearestStation}
+                        onChange={e=>setPlannerResult(r=>({...r,nearestStation:e.target.value}))}
+                        style={{width:"100%",background:"rgba(0,0,0,0.3)",
+                          border:`1.5px solid ${acc}55`,borderRadius:9,
+                          padding:"9px 12px",color:C.text,fontSize:13,
+                          outline:"none",boxSizing:"border-box",fontWeight:600}}/>
+                      <div style={{fontSize:9,color:C.muted,marginTop:4}}>
+                        {plannerResult.stationDistanceKm&&`~${plannerResult.stationDistanceKm} km · `}
+                        {plannerResult.walkToStation&&`~${plannerResult.walkToStation} min walk (AI estimate)`}
+                      </div>
+                    </div>
+
+                    {/* Two action buttons */}
+                    <div style={{display:"flex",gap:8,marginBottom:6}}>
+                      {/* Find nearest station on Google Maps */}
+                      <button onClick={()=>{
+                        const loc = plannerResult._coords&&plannerResult._coords.lat!=="unknown"
+                          ? `${plannerResult._coords.lat},${plannerResult._coords.lng}`
+                          : `${plannerOrigin||city.name}`;
+                        const q = encodeURIComponent(`metro station near ${plannerOrigin||city.name}`);
+                        window.open(`https://www.google.com/maps/search/${q}/@${plannerResult._coords?.lat||"17.4"},${plannerResult._coords?.lng||"78.4"},14z`,"_blank");
+                      }} style={{
+                        flex:1,background:"rgba(255,107,26,0.12)",
+                        border:`1px solid ${acc}44`,borderRadius:10,padding:"10px 8px",
+                        cursor:"pointer",fontWeight:700,fontSize:11,color:acc,
+                        display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                        🔍 Find Nearest Station
+                      </button>
+
+                      {/* Navigate to corrected station */}
+                      <button onClick={()=>{
+                        const dest = encodeURIComponent(plannerResult.nearestStation+", "+city.name);
+                        let url;
+                        if(plannerResult._coords&&plannerResult._coords.lat!=="unknown"){
+                          const {lat,lng}=plannerResult._coords;
+                          url=`https://www.google.com/maps/dir/${lat},${lng}/${dest}/`;
+                        } else {
+                          url=`https://www.google.com/maps/search/${dest}`;
+                        }
+                        window.open(url,"_blank");
+                      }} style={{
+                        flex:1,background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+                        border:"none",borderRadius:10,padding:"10px 8px",
+                        cursor:"pointer",fontWeight:700,fontSize:11,color:"#fff",
+                        display:"flex",alignItems:"center",justifyContent:"center",gap:5,
+                        boxShadow:"0 3px 10px rgba(26,115,232,0.4)"}}>
+                        🗺️ Navigate There
+                      </button>
+                    </div>
+
+                    {/* Route mode buttons */}
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>
+                        🗺️ HOW DO YOU WANT TO REACH THE STATION?
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+                        {[
+                          {icon:"🚶",label:"Walking",    mode:"walking",   color:"#00D4AA", note:"Recommended"},
+                          {icon:"🚗",label:"Driving",    mode:"driving",   color:"#4FC3F7", note:""},
+                          {icon:"🚲",label:"Cycling",    mode:"bicycling", color:"#A78BFA", note:""},
+                          {icon:"🚌",label:"By Transit", mode:"transit",   color:"#F5A623", note:""},
+                        ].map((opt,i)=>(
+                          <button key={i} onClick={()=>{
+                            const dest = encodeURIComponent(plannerResult.nearestStation+", "+city.name);
+                            let url;
+                            if(plannerResult._coords&&plannerResult._coords.lat!=="unknown"){
+                              const {lat,lng}=plannerResult._coords;
+                              url=`https://www.google.com/maps/dir/${lat},${lng}/${dest}/@${lat},${lng},15z/data=!4m2!4m1!3e${opt.mode==="walking"?"2":opt.mode==="bicycling"?"1":opt.mode==="transit"?"3":"0"}`;
+                            } else {
+                              const origin = encodeURIComponent(plannerOrigin||city.name);
+                              url=`https://www.google.com/maps/dir/${origin}/${dest}/?travelmode=${opt.mode}`;
+                            }
+                            window.open(url,"_blank");
+                          }} style={{
+                            background:`${opt.color}12`,
+                            border:`1px solid ${opt.color}44`,
+                            borderRadius:10,padding:"10px 8px",cursor:"pointer",
+                            textAlign:"center",transition:"all 0.18s"}}>
+                            <div style={{fontSize:20,marginBottom:4}}>{opt.icon}</div>
+                            <div style={{fontSize:11,fontWeight:700,color:opt.color}}>{opt.label}</div>
+                            {opt.note&&<div style={{fontSize:8,color:opt.color,opacity:0.7,marginTop:2}}>{opt.note}</div>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Apple Maps option for iOS */}
                     <button onClick={()=>{
-                      const q = plannerResult.googleMapsQuery||plannerResult.nearestStation;
-                      const dest = encodeURIComponent(q);
-                      let url;
-                      if(plannerResult._coords&&plannerResult._coords.lat!=="unknown") {
-                        const {lat,lng} = plannerResult._coords;
-                        url = `https://www.google.com/maps/dir/${lat},${lng}/${dest}/`;
-                      } else {
-                        url = `https://www.google.com/maps/search/${dest}`;
-                      }
+                      const dest = encodeURIComponent(plannerResult.nearestStation+", "+city.name);
+                      const coords = plannerResult._coords;
+                      const url = coords&&coords.lat!=="unknown"
+                        ? `http://maps.apple.com/?saddr=${coords.lat},${coords.lng}&daddr=${dest}&dirflg=w`
+                        : `http://maps.apple.com/?q=${dest}`;
                       window.open(url,"_blank");
                     }} style={{
-                      width:"100%",
-                      background:"linear-gradient(135deg,#1A73E8,#4285F4)",
-                      border:"none",borderRadius:10,padding:"11px",
-                      cursor:"pointer",fontWeight:700,fontSize:13,color:"#fff",
-                      display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-                      boxShadow:"0 3px 12px rgba(26,115,232,0.4)"}}>
-                      <span style={{fontSize:16}}>🗺️</span>
-                      Navigate to Station via Google Maps
+                      width:"100%",background:"rgba(255,255,255,0.04)",
+                      border:`1px solid ${C.border}`,borderRadius:9,padding:"8px",
+                      cursor:"pointer",color:C.textDim,fontSize:11,
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      🍎 Open in Apple Maps (iOS)
                     </button>
 
-                    <div style={{fontSize:9,color:C.muted,marginTop:6,textAlign:"center"}}>
-                      Opens Google Maps with walking/driving directions to the station
+                    <div style={{fontSize:8,color:C.muted,textAlign:"center",marginTop:6,lineHeight:1.5}}>
+                      All navigation options open in Google Maps or Apple Maps — choose walking for the most accurate route to the station entrance.
                     </div>
                   </div>
                 )}
