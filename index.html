@@ -1535,6 +1535,8 @@ function TranzitApp(){
   const [plannerLoading, setPlannerLoading] = useState(false);
   const [plannerLocation,setPlannerLocation]= useState(null); // {lat,lng}
   const [plannerLocBusy, setPlannerLocBusy]= useState(false);
+  const [toStationMode,  setToStationMode]  = useState("walk");
+  const [toStationMins,  setToStationMins]  = useState("");
 
   // ── Share Journey state ──
   const [shareOpen,      setShareOpen]      = useState(false);
@@ -1715,10 +1717,20 @@ function TranzitApp(){
       } catch(e) { coords = null; }
     }
 
+    const TO_STATION_MODES = {
+      walk:  {label:"walking",      gmMode:"walking",   typical:10},
+      cycle: {label:"cycling",      gmMode:"bicycling", typical:6},
+      bike:  {label:"motorbike/scooter", gmMode:"driving", typical:4},
+      auto:  {label:"auto-rickshaw",gmMode:"driving",   typical:7},
+      car:   {label:"car/cab",      gmMode:"driving",   typical:5},
+    };
+    const modeInfo   = TO_STATION_MODES[toStationMode]||TO_STATION_MODES.walk;
+    const minsToStn  = parseInt(toStationMins)||modeInfo.typical;
+
     const originDesc = plannerOrigin.trim()
       ? `Starting from: "${plannerOrigin}"`
       : coords && coords.lat !== "unknown"
-        ? `Starting from: GPS coordinates ${coords.lat}, ${coords.lng} (use nearest known area name for context)`
+        ? `Starting from: GPS coordinates ${coords.lat}, ${coords.lng}`
         : `Starting from: somewhere in ${city.name}`;
 
     const prompt = `You are a transit expert for ${city.name}, ${city.country}.
@@ -1726,21 +1738,26 @@ ${originDesc}.
 Destination: "${plannerDest}". Must arrive by: ${plannerArrival}.
 Transit system: ${city.transitLabel}.
 
-Consider: peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.freqMins||5} min), walking time, platform wait, and travel from origin to nearest transit station.
+IMPORTANT travel-to-station leg:
+- The person will travel from their starting location to the metro/transit station by ${modeInfo.label}.
+- Estimated time to reach the station: ${minsToStn} minutes (this MUST be included in total journey time and departure calculation).
+- Do NOT assume they walk to the station — they are using ${modeInfo.label}.
+
+Consider: peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.freqMins||5} min on main lines), platform wait (~2-3 min), and walk from arrival station to destination.
 
 Respond ONLY with a valid JSON object, no markdown:
 {
-  "departBy": "HH:MM AM/PM — latest safe departure time from origin",
-  "nearestStation": "name of nearest transit station to start from",
-  "walkToStation": <minutes walk from origin to that station>,
-  "stationDistanceKm": <approximate distance in km from origin to station, e.g. 0.8>,
-  "transitTime": <minutes on transit>,
-  "walkFromStation": <minutes walk from arrival station to destination>,
+  "departBy": "HH:MM AM/PM — the latest safe time to LEAVE THEIR STARTING LOCATION",
+  "nearestStation": "name of the best transit station to board from given their location",
+  "timeToStation": ${minsToStn},
+  "stationDistanceKm": <estimated km from origin to station>,
+  "transitTime": <minutes on transit vehicle>,
+  "walkFromStation": <minutes walking from arrival station to destination>,
   "bufferTime": <recommended buffer minutes>,
-  "totalJourney": <total minutes door to door>,
-  "route": "full route: origin → station → transit line → destination",
-  "googleMapsQuery": "station name + city for Google Maps search e.g. Ameerpet Metro Station Hyderabad",
-  "tip": "one practical tip for this journey",
+  "totalJourney": <total minutes: timeToStation + transitTime + walkFromStation + bufferTime>,
+  "route": "Full route: Starting location → [mode] ${minsToStn}min → Station → Transit line → Destination",
+  "googleMapsQuery": "station name + city for Google Maps e.g. Raidurg Metro Station Hyderabad",
+  "tip": "one practical tip",
   "peakWarning": true or false
 }`;
 
@@ -2338,6 +2355,97 @@ Respond ONLY with a valid JSON object, no markdown:
               </div>
             </div>
 
+            {/* HOW DO YOU GET TO THE STATION */}
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"13px 14px",marginBottom:12}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>
+                🚏 HOW WILL YOU GET TO THE METRO STATION?
+              </div>
+              <div style={{fontSize:10,color:C.textDim,marginBottom:10,lineHeight:1.6}}>
+                This affects your departure time — a 10-min cycle ride vs a 3-min car drop makes a real difference.
+              </div>
+
+              {/* Mode grid */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:7,marginBottom:12}}>
+                {[
+                  {id:"walk",  icon:"🚶", label:"Walk",    typical:10, gmMode:"walking"},
+                  {id:"cycle", icon:"🚲", label:"Cycle",   typical:6,  gmMode:"bicycling"},
+                  {id:"bike",  icon:"🛵", label:"Bike",    typical:4,  gmMode:"driving"},
+                  {id:"auto",  icon:"🛺", label:"Auto",    typical:7,  gmMode:"driving"},
+                  {id:"car",   icon:"🚗", label:"Car/Cab", typical:5,  gmMode:"driving"},
+                ].map(m=>(
+                  <button key={m.id} onClick={()=>{
+                    setToStationMode(m.id);
+                    if(!toStationMins) setToStationMins(String(m.typical));
+                  }} style={{
+                    background:toStationMode===m.id?`linear-gradient(135deg,${acc},${accB})`:"rgba(255,255,255,0.04)",
+                    border:`1px solid ${toStationMode===m.id?"transparent":C.border}`,
+                    borderRadius:10,padding:"10px 4px",cursor:"pointer",textAlign:"center"}}>
+                    <div style={{fontSize:18,marginBottom:3}}>{m.icon}</div>
+                    <div style={{fontSize:9,fontWeight:600,color:toStationMode===m.id?"#000":C.textDim}}>{m.label}</div>
+                    <div style={{fontSize:8,color:toStationMode===m.id?"rgba(0,0,0,0.6)":C.muted,marginTop:1}}>~{m.typical}m</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Time to station — editable */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:5}}>
+                  ⏱ ESTIMATED TIME TO REACH STATION (minutes)
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <input type="number" min="1" max="90"
+                    value={toStationMins}
+                    onChange={e=>setToStationMins(e.target.value)}
+                    placeholder="e.g. 8"
+                    style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
+                      borderRadius:9,padding:"8px 12px",color:C.text,fontSize:14,
+                      fontFamily:"'DM Mono',monospace",fontWeight:700,
+                      outline:"none",boxSizing:"border-box",textAlign:"center"}}/>
+                  <div style={{fontSize:11,color:C.muted}}>minutes</div>
+                </div>
+                <div style={{fontSize:9,color:C.muted,marginTop:4,lineHeight:1.5}}>
+                  Not sure? Check on Google Maps first ↓
+                </div>
+              </div>
+
+              {/* Check on Google Maps buttons */}
+              {(plannerLocation||plannerOrigin)&&(
+                <div>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:6}}>
+                    📍 CHECK TRAVEL TIME ON GOOGLE MAPS
+                  </div>
+                  <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                    {[
+                      {id:"walk",  icon:"🚶", label:"Walking time",   gmMode:"walking"},
+                      {id:"cycle", icon:"🚲", label:"Cycling time",   gmMode:"bicycling"},
+                      {id:"auto",  icon:"🛺", label:"Driving time",   gmMode:"driving"},
+                    ].map(m=>(
+                      <button key={m.id} onClick={()=>{
+                        const origin = plannerLocation&&plannerLocation.lat!=="unknown"
+                          ? `${plannerLocation.lat},${plannerLocation.lng}`
+                          : encodeURIComponent(plannerOrigin||city.name);
+                        // Open Google Maps directions — user sees exact time for this mode
+                        // Using a generic "metro station near me" as placeholder destination
+                        const dest = encodeURIComponent(`metro station near ${plannerOrigin||city.name}`);
+                        const url = `https://www.google.com/maps/dir/${origin}/${dest}/?travelmode=${m.gmMode}`;
+                        window.open(url,"_blank");
+                      }} style={{
+                        background:"rgba(26,115,232,0.10)",
+                        border:"1px solid rgba(26,115,232,0.3)",
+                        borderRadius:8,padding:"6px 10px",cursor:"pointer",
+                        fontSize:10,color:"#4FC3F7",
+                        display:"flex",alignItems:"center",gap:5}}>
+                        {m.icon} {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{fontSize:9,color:C.muted,marginTop:5,lineHeight:1.5}}>
+                    Google Maps will show the exact time. Enter that number in the minutes field above, then calculate.
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Calculate button */}
             <button onClick={calcDepartureTime}
               disabled={plannerLoading||!plannerDest||!plannerArrival}
@@ -2529,16 +2637,22 @@ Respond ONLY with a valid JSON object, no markdown:
                 {/* Journey breakdown */}
                 <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
                   <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>⏱ FULL JOURNEY BREAKDOWN</div>
-                  {[
-                    {l:"Walk to station",        v:plannerResult.walkToStation!=null?`${plannerResult.walkToStation} min`:"—", c:C.sky,   icon:"🚶"},
-                    {l:"Transit time",            v:`${plannerResult.transitTime} min`,                                          c:accB,      icon:"🚇"},
-                    {l:"Walk to destination",     v:plannerResult.walkFromStation!=null?`${plannerResult.walkFromStation} min`:"—",c:C.sky,  icon:"🚶"},
-                    {l:"Safety buffer",           v:`${plannerResult.bufferTime} min`,                                           c:C.emerald, icon:"🛡️"},
-                    {l:"Total door-to-door",      v:`${plannerResult.totalJourney} min`,                                         c:acc,       icon:"📍", bold:true},
-                  ].map((row,i)=>(
+                  {(()=>{
+                    const modeIcons={walk:"🚶",cycle:"🚲",bike:"🛵",auto:"🛺",car:"🚗"};
+                    const modeLabels={walk:"Walk to station",cycle:"Cycle to station",bike:"Ride to station",auto:"Auto to station",car:"Drive to station"};
+                    return [
+                      {l:modeLabels[toStationMode]||"Travel to station", v:plannerResult.timeToStation!=null?`${plannerResult.timeToStation} min`:`${toStationMins||"?"} min`, c:C.emerald, icon:modeIcons[toStationMode]||"🚏"},
+                      {l:"Transit time",              v:`${plannerResult.transitTime} min`,                                           c:accB,      icon:"🚇"},
+                      {l:"Walk to destination",       v:plannerResult.walkFromStation!=null?`${plannerResult.walkFromStation} min`:"—",c:C.sky,    icon:"🚶"},
+                      {l:"Safety buffer",             v:`${plannerResult.bufferTime} min`,                                            c:"#A78BFA", icon:"🛡️"},
+                      {l:"Total door-to-door",        v:`${plannerResult.totalJourney} min`,                                          c:acc,       icon:"📍", bold:true},
+                    ];
+                  })().map((row,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:9,
-                      padding:"8px 0",borderBottom:i<4?`1px solid rgba(255,255,255,0.05)`:"none"}}>
-                      <span style={{fontSize:13,flexShrink:0}}>{row.icon}</span>
+                      padding:"9px 0",borderBottom:i<4?`1px solid rgba(255,255,255,0.05)`:"none",
+                      background:i===0?`${C.emerald}08`:"transparent",
+                      borderRadius:i===0?6:0,paddingLeft:i===0?6:0}}>
+                      <span style={{fontSize:14,flexShrink:0}}>{row.icon}</span>
                       <div style={{flex:1,fontSize:12,color:row.bold?C.text:C.textDim,fontWeight:row.bold?700:400}}>{row.l}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:row.c}}>{row.v}</div>
                     </div>
