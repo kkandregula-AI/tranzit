@@ -807,10 +807,16 @@ async function findNearestMetroStation(lat, lng, cityName) {
           return d < dBest ? cur : best;
         }, null);
         if(closest) {
-          // Extract clean station name (remove long address suffix)
+          // Extract clean station name from Nominatim display_name
+          // display_name format: "Name, Area, City, State, Country"
           let name = closest.display_name.split(",")[0].trim();
-          // Clean up common suffixes
-          name = name.replace(/\s*(Metro|Station|Stop|Halt)\s*(Station|Stop)?$/i, s => s.trim()).trim();
+          // Fix missing spaces before "Metro", "Station" etc.
+          name = name.replace(/([a-z])Metro/g, "$1 Metro")
+                     .replace(/([a-z])Station/g, "$1 Station")
+                     .replace(/([a-z])Railway/g, "$1 Railway")
+                     .replace(/([a-z])Subway/g, "$1 Subway")
+                     .replace(/\s+/g, " ")
+                     .trim();
           return {lat:parseFloat(closest.lat), lng:parseFloat(closest.lon), name};
         }
       }
@@ -1694,7 +1700,7 @@ function TranzitApp(){
     window.addEventListener("online",  goOnline);
     return ()=>{ window.removeEventListener("offline",goOffline); window.removeEventListener("online",goOnline); };
   },[]);
-  useEffect(()=>{ setFrom(city.defaultFrom);setTo(city.defaultTo);setRoutes([]);setSearched(false);setSelRoute(0);setAiError("");setShowKeyPanel(false);setEditingKey(false);},[cityKey]);
+  useEffect(()=>{ setFrom(city.defaultFrom);setTo(city.defaultTo);setRoutes([]);setSearched(false);setSelRoute(0);setAiError("");setShowKeyPanel(false);setEditingKey(false);setPlannerNearestStation(null);setPlannerLocation(null);setPlannerOrigin("");setPlannerResult(null);setToStationMins("");},[cityKey]);
 
   const fmtTime   =d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
   const fmtFare   =v=>(typeof v==="number"&&v%1!==0)?v.toFixed(2):String(Math.round(v));
@@ -1855,6 +1861,8 @@ function TranzitApp(){
       ? `The nearest metro station to the starting location (verified via OpenStreetMap) is: "${plannerNearestStation.name}". Use this as the boarding station.`
       : "";
 
+    const osmStation = plannerNearestStation?.name || "";
+
     const prompt = `You are a transit expert for ${city.name}, ${city.country}.
 ${originDesc}.
 ${stationHint}
@@ -1863,32 +1871,38 @@ Transit system: ${city.transitLabel}.
 
 IMPORTANT travel-to-station leg:
 - The person will travel from their starting location to the metro/transit station by ${modeInfo.label}.
-- Estimated time to reach the station: ${minsToStn} minutes (this MUST be included in total journey time and departure calculation).
-- Do NOT assume they walk to the station — they are using ${modeInfo.label}.
+- Estimated time to reach the station: ${minsToStn} minutes (include this in total journey and departure calculation).
+- Do NOT assume they walk to the station.
 
-Consider: peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.freqMins||5} min on main lines), platform wait (~2-3 min), and walk from arrival station to destination.
+Consider: peak hour crowd levels, transit frequency (every ${city.lines?.[0]?.freqMins||5} min), platform wait (~2-3 min), walk from arrival station to destination.
 
-Respond ONLY with a valid JSON object, no markdown:
+Respond ONLY with a valid JSON object. No markdown, no extra text.
 {
-  "departBy": "HH:MM AM/PM — the latest safe time to LEAVE THEIR STARTING LOCATION",
-  "nearestStation": "${plannerNearestStation?.name||'name of the best transit station to board from given their location'}",
+  "departBy": "HH:MM AM/PM",
+  "nearestStation": "boarding station name",
   "timeToStation": ${minsToStn},
-  "stationDistanceKm": <estimated km from origin to station>,
-  "transitTime": <minutes on transit vehicle>,
-  "walkFromStation": <minutes walking from arrival station to destination>,
-  "bufferTime": <recommended buffer minutes>,
-  "totalJourney": <total minutes: timeToStation + transitTime + walkFromStation + bufferTime>,
-  "route": "Full route: Starting location → [mode] ${minsToStn}min → Station → Transit line → Destination",
-  "googleMapsQuery": "station name + city for Google Maps e.g. Raidurg Metro Station Hyderabad",
-  "tip": "one practical tip",
-  "peakWarning": true or false
+  "stationDistanceKm": 0.0,
+  "transitTime": 0,
+  "walkFromStation": 0,
+  "bufferTime": 0,
+  "totalJourney": 0,
+  "route": "Starting location to destination route description",
+  "googleMapsQuery": "station name city",
+  "tip": "practical tip",
+  "peakWarning": false
 }`;
 
     try {
-      const {res} = await callWithFallback(apiKey,(modelId)=>({model:modelId,max_tokens:500,messages:[{role:"user",content:prompt}]}),null);
+      const {res} = await callWithFallback(apiKey,(modelId)=>({model:modelId,max_tokens:700,messages:[{role:"user",content:prompt}]}),null);
       const data = await res.json();
-      const raw = data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim();
-      const obj = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}")+1));
+      let raw = data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim();
+      const objStart = raw.indexOf("{");
+      const objEnd   = raw.lastIndexOf("}");
+      if(objStart===-1) throw new Error("No JSON in response");
+      const jsonStr = objEnd>objStart ? raw.slice(objStart,objEnd+1) : raw.slice(objStart)+"}";
+      const obj = JSON.parse(jsonStr);
+      // Override nearestStation with OSM result if we have one
+      if(osmStation) obj.nearestStation = osmStation;
       setPlannerResult({...obj, _coords: coords});
     } catch(e) {
       setPlannerResult({error:`Could not calculate: ${e.message}`});
