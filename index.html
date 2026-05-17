@@ -782,43 +782,71 @@ async function getStationRouteTime(userLat, userLng, stationName, cityName, mode
 }
 
 // Find nearest metro/subway station to user's GPS
-async function findNearestMetroStation(lat, lng, cityName) {
-  // City-specific search terms ordered by likelihood
-  const queries = [
-    `metro station ${cityName}`,
-    `subway station ${cityName}`,
-    `MRT station ${cityName}`,
-    `underground station ${cityName}`,
-    `train station ${cityName}`,
-  ];
+// ── HAVERSINE DISTANCE (km) ──────────────────────────────────────────────────
+function haversineKm(lat1,lng1,lat2,lng2){
+  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ── FIND NEAREST METRO STATION via Overpass API ──────────────────────────────
+// Overpass queries OSM tags directly — much more accurate than Nominatim search
+async function findNearestMetroStation(lat, lng, cityName, radiusM=4000) {
+  // Query all metro/subway/rail stations within radius
+  const query = `[out:json][timeout:15];
+(
+  node["station"="subway"](around:${radiusM},${lat},${lng});
+  node["railway"="station"]["station"="subway"](around:${radiusM},${lat},${lng});
+  node["railway"="station"]["network"~"[Mm]etro|[Ss]ubway|MRT|DMRC|HMRL|TSRTC"](around:${radiusM},${lat},${lng});
+  node["railway"="halt"]["station"="subway"](around:${radiusM},${lat},${lng});
+  node["public_transport"="station"]["station"="subway"](around:${radiusM},${lat},${lng});
+);
+out body;`;
+
+  try {
+    const res = await fetch(
+      `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
+      {headers:{"User-Agent":"Tranzit-App/1.0"}, signal:AbortSignal.timeout(12000)}
+    );
+    const data = await res.json();
+    if(data.elements && data.elements.length > 0) {
+      // Sort by actual Haversine distance — pick the genuinely closest
+      const sorted = data.elements
+        .filter(n=>n.lat&&n.lon&&(n.tags?.name||n.tags?.["name:en"]))
+        .map(n=>({
+          ...n,
+          distKm: haversineKm(lat,lng,n.lat,n.lon),
+          name: (n.tags?.["name:en"]||n.tags?.name||"").trim(),
+        }))
+        .sort((a,b)=>a.distKm-b.distKm);
+
+      if(sorted.length) {
+        const best = sorted[0];
+        return {lat:best.lat, lng:best.lon, name:best.name, distKm:best.distKm.toFixed(2)};
+      }
+    }
+  } catch(e) {
+    console.warn("Overpass failed, falling back to Nominatim:", e.message);
+  }
+
+  // Fallback: Nominatim with tighter bounding box
+  const queries = ["metro station","subway station","railway station","MRT station"];
   for(const q of queries) {
     try {
-      // Tighter bounding box (3km radius) for nearest result
-      const box = `${lng-0.03},${lat+0.03},${lng+0.03},${lat-0.03}`;
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&viewbox=${box}&bounded=0&accept-language=en`;
-      const res = await fetch(url, {headers:{"User-Agent":"Tranzit-App/1.0"}});
-      const data = await res.json();
-      if(data.length) {
-        // Pick closest by straight-line distance
-        const closest = data.reduce((best, cur) => {
-          const dLat = parseFloat(cur.lat)-lat, dLng = parseFloat(cur.lon)-lng;
-          const d = Math.sqrt(dLat*dLat+dLng*dLng);
-          const dBest = best ? Math.sqrt(Math.pow(parseFloat(best.lat)-lat,2)+Math.pow(parseFloat(best.lon)-lng,2)) : Infinity;
-          return d < dBest ? cur : best;
-        }, null);
-        if(closest) {
-          // Extract clean station name from Nominatim display_name
-          // display_name format: "Name, Area, City, State, Country"
-          let name = closest.display_name.split(",")[0].trim();
-          // Fix missing spaces before "Metro", "Station" etc.
-          name = name.replace(/([a-z])Metro/g, "$1 Metro")
-                     .replace(/([a-z])Station/g, "$1 Station")
-                     .replace(/([a-z])Railway/g, "$1 Railway")
-                     .replace(/([a-z])Subway/g, "$1 Subway")
-                     .replace(/\s+/g, " ")
-                     .trim();
-          return {lat:parseFloat(closest.lat), lng:parseFloat(closest.lon), name};
-        }
+      const box = `${lng-0.02},${lat+0.02},${lng+0.02},${lat-0.02}`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q+" "+cityName)}&format=json&limit=10&viewbox=${box}&bounded=0&accept-language=en`;
+      const res = await fetch(url,{headers:{"User-Agent":"Tranzit-App/1.0"}});
+      const items = await res.json();
+      if(items.length) {
+        // Sort by Haversine distance
+        const sorted = items
+          .map(i=>({...i, distKm:haversineKm(lat,lng,parseFloat(i.lat),parseFloat(i.lon))}))
+          .sort((a,b)=>a.distKm-b.distKm);
+        const best = sorted[0];
+        let name = best.display_name.split(",")[0].trim();
+        // Fix missing spaces before transit keywords
+        name = name.replace(/([a-z])([A-Z])/g,"$1 $2").trim();
+        return {lat:parseFloat(best.lat),lng:parseFloat(best.lon),name,distKm:best.distKm.toFixed(2)};
       }
     } catch(e) { continue; }
   }
@@ -2502,7 +2530,14 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
                           <span style={{fontSize:13}}>🚉</span>
                           <div style={{flex:1}}>
                             <div style={{fontSize:10,color:C.emerald,fontWeight:600,letterSpacing:"0.06em"}}>NEAREST STATION — via OpenStreetMap</div>
-                            <div style={{fontWeight:700,fontSize:14,color:C.text,marginTop:2}}>{plannerNearestStation.name}</div>
+                            <div style={{fontWeight:700,fontSize:14,color:C.text,marginTop:2}}>
+                            {plannerNearestStation.name}
+                            {plannerNearestStation.distKm&&(
+                              <span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:8}}>
+                                ~{plannerNearestStation.distKm} km away
+                              </span>
+                            )}
+                          </div>
                           </div>
                           <div style={{fontSize:9,background:`${C.emerald}20`,color:C.emerald,
                             borderRadius:5,padding:"2px 7px",fontWeight:600,flexShrink:0}}>OSM ✓</div>
