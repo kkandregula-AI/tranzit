@@ -1552,8 +1552,10 @@ function NavigateTab({city, acc, accB}) {
   const [transit, setTransit] = useState("metro"); // metro | bus | all
 
   // Straight-line distance → realistic time estimates
-  const walkMin = km => Math.max(2, Math.round(km / 5 * 60));
-  const cabMin  = km => Math.max(2, Math.round(km / 20 * 60));
+  // Straight-line × 1.4 road factor ÷ speed — still approximate
+  // Google Maps uses actual roads + traffic, so always verify there
+  const walkMin = km => Math.max(3, Math.round(km * 1.4 / 5 * 60));
+  const cabMin  = km => Math.max(2, Math.round(km * 1.4 / 20 * 60));
 
   const detect = async () => {
     setStep("locating"); setNearest([]); setSelected(null); setNavLoc(null);
@@ -1582,23 +1584,17 @@ function NavigateTab({city, acc, accB}) {
   const navigate = (station, mode) => {
     const dest = encodeURIComponent(station.n + ", " + city.name);
     const travel = mode === "walk" ? "walking" : "driving";
-    if(navLoc) {
-      window.open(
-        "https://www.google.com/maps/dir/" + navLoc.lat + "," + navLoc.lng +
-        "/" + dest + "/?travelmode=" + travel, "_blank"
-      );
-    } else {
-      window.open("https://www.google.com/maps/dir/My+Location/" + dest + "/?travelmode=" + travel, "_blank");
-    }
+    // Always use My+Location as origin — Google Maps shows "My Location" cleanly
+    // and uses its own GPS rather than showing a nearby business name
+    window.open(
+      "https://www.google.com/maps/dir/My+Location/" + dest + "/?travelmode=" + travel,
+      "_blank"
+    );
   };
 
   const searchOnMaps = (type) => {
-    if(navLoc) {
-      const q = type === "bus" ? "bus+stand+near+me" : "metro+station+near+me";
-      window.open("https://www.google.com/maps/search/" + q + "/@" + navLoc.lat + "," + navLoc.lng + ",15z", "_blank");
-    } else {
-      window.open("https://www.google.com/maps/search/transit+station+near+me/", "_blank");
-    }
+    const q = type === "bus" ? "bus+stand+near+me" : "metro+station+near+me";
+    window.open("https://www.google.com/maps/search/" + q + "/", "_blank");
   };
 
   // ── IDLE STATE ──────────────────────────────────────────────────────────────
@@ -1770,27 +1766,31 @@ function NavigateTab({city, acc, accB}) {
                   </div>
                 </div>
 
-                {/* Time estimates */}
+                {/* Time estimates with clear disclaimer */}
                 <div style={{display:"flex",gap:8,marginTop:10}}>
                   <div style={{flex:1,background:"rgba(0,212,170,0.08)",
                     border:"1px solid rgba(0,212,170,0.2)",
                     borderRadius:9,padding:"7px",textAlign:"center"}}>
-                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚶 WALK</div>
+                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚶 EST. WALK</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
                       fontSize:16,color:C.emerald}}>~{walkMin(s.km)}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
                   </div>
                   <div style={{flex:1,background:"rgba(79,195,247,0.08)",
                     border:"1px solid rgba(79,195,247,0.2)",
                     borderRadius:9,padding:"7px",textAlign:"center"}}>
-                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚗 CAB</div>
+                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚗 EST. CAB</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
                       fontSize:16,color:C.sky}}>~{cabMin(s.km)}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
                   </div>
                 </div>
+                <div style={{fontSize:8,color:C.muted,textAlign:"center",marginTop:5,
+                  lineHeight:1.5}}>
+                  ⚠️ Estimated · actual time on Google Maps may differ due to roads &amp; traffic
+                </div>
 
-                {/* Navigation buttons — shown when selected */}
+                {/* Navigation buttons */}
                 {isSelected && (
-                  <div style={{marginTop:12,display:"flex",gap:8,animation:"fadeIn 0.2s ease"}}>
+                  <div style={{marginTop:10,display:"flex",gap:8,animation:"fadeIn 0.2s ease"}}>
                     <button onClick={function(e){e.stopPropagation();navigate(s,"walk");}} style={{
                       flex:1,background:"rgba(0,212,170,0.12)",
                       border:"1px solid rgba(0,212,170,0.35)",
@@ -1809,10 +1809,24 @@ function NavigateTab({city, acc, accB}) {
                     </button>
                   </div>
                 )}
-
                 {!isSelected && (
-                  <div style={{marginTop:8,fontSize:10,color:C.muted,textAlign:"center"}}>
-                    Tap to navigate →
+                  <div style={{marginTop:8,display:"flex",gap:8}}>
+                    <button onClick={function(e){e.stopPropagation();navigate(s,"walk");}} style={{
+                      flex:1,background:"rgba(0,212,170,0.08)",
+                      border:"1px solid rgba(0,212,170,0.2)",
+                      borderRadius:8,padding:"8px",cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:5,
+                      fontSize:11,color:C.emerald,fontWeight:600}}>
+                      🚶 Walk
+                    </button>
+                    <button onClick={function(e){e.stopPropagation();navigate(s,"cab");}} style={{
+                      flex:1,background:"rgba(26,115,232,0.15)",
+                      border:"1px solid rgba(26,115,232,0.3)",
+                      borderRadius:8,padding:"8px",cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:5,
+                      fontSize:11,color:"#5BA4E8",fontWeight:600}}>
+                      🗺️ Drive
+                    </button>
                   </div>
                 )}
               </div>
