@@ -1134,14 +1134,24 @@ async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChang
     return { routes: cached.routes, fromCache: true, cacheAge: cacheAge(cached), tokensSaved: cached.tokens };
   }
 
-  const prompt = `Transit expert: ${city.name}, ${city.country}. System: ${city.transitLabel}. Currency: ${city.currency}.
-5 routes from "${from}" to "${to}". Raw JSON array only, no markdown.
-Each: {"id":"str","icon":"emoji","label":"name","via":"real stops","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"insight"}
-Use real names. Include local modes (auto/tram/ferry if applicable).`;
+  const prompt = `You are a transit expert for ${city.name}, ${city.country}. Transit system: ${city.transitLabel}. Currency: ${city.currency}.
+
+Generate 5 distinct multi-modal routes from "${from}" to "${to}".
+
+CRITICAL RULES:
+1. Metro routes MUST follow this exact step format in "via": "Walk to [Nearest Boarding Station Name] → [Line Name] towards [Direction/Terminal] → Alight at [Destination Station Name] → Walk to ${to}"
+2. Bus routes MUST list ALL bus numbers that serve this route, e.g. "Bus 5K, 216K, 219K → [Key Stop Name] → Walk to ${to}". Never show just one bus number if multiple exist.
+3. Use REAL station names, real bus numbers, real stop names for ${city.name}.
+4. "via" field must be a clear step-by-step navigation string a traveller can follow.
+
+Return a raw JSON array only, no markdown, no extra text.
+Each item: {"id":"str","icon":"emoji","label":"Mode Name","via":"step-by-step route as above","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"one practical tip"}
+
+Include these mode types where applicable: Metro, Bus (with all bus numbers), Auto-rickshaw, Cab, Walking, Cycle.`;
 
   const { res, model } = await callWithFallback(
     apiKey,
-    (modelId) => ({ model: modelId, max_tokens: 1800, messages:[{role:"user",content:prompt}] }),
+    (modelId) => ({ model: modelId, max_tokens: 2000, messages:[{role:"user",content:prompt}] }),
     onModelChange
   );
 
@@ -1582,19 +1592,20 @@ function NavigateTab({city, acc, accB}) {
 
   // Open Google Maps walking route to station
   const openWalk = (s) => {
+    // !4m2!4m1!3e2 = walking mode in Google Maps URL encoding
     window.open(
       "https://www.google.com/maps/dir/My+Location/" +
       encodeURIComponent(s.n + ", " + city.name) +
-      "/?travelmode=walking", "_blank"
+      "/data=!4m2!4m1!3e2", "_blank"
     );
   };
 
-  // Open Google Maps driving route to station
   const openDrive = (s) => {
+    // !4m2!4m1!3e0 = driving mode in Google Maps URL encoding
     window.open(
       "https://www.google.com/maps/dir/My+Location/" +
       encodeURIComponent(s.n + ", " + city.name) +
-      "/?travelmode=driving", "_blank"
+      "/data=!4m2!4m1!3e0", "_blank"
     );
   };
 
