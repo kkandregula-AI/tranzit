@@ -1139,15 +1139,16 @@ async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChang
 Generate 5 distinct multi-modal routes from "${from}" to "${to}".
 
 CRITICAL RULES:
-1. Metro routes MUST follow this exact step format in "via": "Walk to [Nearest Boarding Station Name] → [Line Name] towards [Direction/Terminal] → Alight at [Destination Station Name] → Walk to ${to}"
-2. Bus routes MUST list ALL bus numbers that serve this route, e.g. "Bus 5K, 216K, 219K → [Key Stop Name] → Walk to ${to}". Never show just one bus number if multiple exist.
-3. Use REAL station names, real bus numbers, real stop names for ${city.name}.
-4. "via" field must be a clear step-by-step navigation string a traveller can follow.
+1. NEVER use "${from}" as a metro station or bus stand name unless it is literally a station/stand. Always find the ACTUAL nearest transit point to "${from}" using your geographic knowledge of ${city.name}.
+2. Metro routes MUST follow this exact step format in "via": "Walk to [ACTUAL Nearest Metro Station e.g. Raidurg] → [Line Name e.g. Red Line] towards [Terminal e.g. Nagole] → Alight at [Nearest Station to ${to}] → Walk to ${to}"
+3. Bus routes MUST: (a) name the ACTUAL nearest bus stand to "${from}" (e.g. Nanakramguda Bus Stand, not "${from} Bus Stand"), and (b) list ALL bus numbers that serve this corridor (e.g. Bus 5K, 216K, 219K — never just one number).
+4. Use REAL station names, real bus numbers, real stop names as they exist in ${city.name} today.
+5. "via" must be a clear turn-by-turn string a traveller can follow on the ground.
 
 Return a raw JSON array only, no markdown, no extra text.
-Each item: {"id":"str","icon":"emoji","label":"Mode Name","via":"step-by-step route as above","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"one practical tip"}
+Each item: {"id":"str","icon":"emoji","label":"Mode Name","via":"full step-by-step route","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"one practical tip"}
 
-Include these mode types where applicable: Metro, Bus (with all bus numbers), Auto-rickshaw, Cab, Walking, Cycle.`;
+Include these modes where applicable: Metro, Bus (all bus numbers), Auto-rickshaw, Cab, Walking.`;
 
   const { res, model } = await callWithFallback(
     apiKey,
