@@ -744,11 +744,16 @@ const cacheAge = (entry) => {
 // No API key required — uses OpenStreetMap data
 
 const OSM_PROFILES = {
+  // profile = OSRM routing profile to use
+  // multiplier = traffic/behaviour adjustment applied to raw OSRM time
+  // note = shown to user explaining the adjustment
   walk:  {profile:"foot", multiplier:1.0,  note:""},
-  cycle: {profile:"bike", multiplier:1.0,  note:""},
-  bike:  {profile:"car",  multiplier:0.75, note:"Bikes filter traffic (~25% faster than car)"},
-  auto:  {profile:"car",  multiplier:1.25, note:"Autos slower in city traffic"},
-  car:   {profile:"car",  multiplier:1.4,  note:"Includes city traffic & signal waits"},
+  cycle: {profile:"bike", multiplier:1.05, note:"Includes stopping at lights"},
+  bike:  {profile:"car",  multiplier:0.80, note:"Bikes filter through traffic — faster than car"},
+  auto:  {profile:"car",  multiplier:1.10, note:"Autos make frequent stops and use narrow lanes"},
+  car:   {profile:"car",  multiplier:1.0,  note:""},
+  // Rule: car OSRM time is always faster than foot OSRM time for same route
+  // Never inflate car above foot — that's physically impossible
 };
 
 async function nominatimSearch(query, lat, lng, radiusKm=5) {
@@ -761,10 +766,12 @@ async function nominatimSearch(query, lat, lng, radiusKm=5) {
 
 async function osrmRouteTime(fromLat, fromLng, toLat, toLng, profile) {
   const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=false`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if(data.code !== "Ok" || !data.routes?.[0]) return null;
-  return Math.ceil(data.routes[0].duration / 60); // seconds → minutes, rounded up
+  try {
+    const res = await fetch(url, {signal: makeSignal(8000)});
+    const data = await res.json();
+    if(data.code !== "Ok" || !data.routes?.[0]) return null;
+    return Math.ceil(data.routes[0].duration / 60);
+  } catch(e) { return null; }
 }
 
 // Main: get real routing time from user coords to a station
@@ -772,12 +779,22 @@ async function getStationRouteTime(userLat, userLng, stationName, cityName, mode
   const modeConfig = OSM_PROFILES[mode] || OSM_PROFILES.walk;
   const profile = modeConfig.profile;
   const multiplier = modeConfig.multiplier;
-  // Try to geocode the station
   const station = await nominatimSearch(`${stationName} ${cityName}`, userLat, userLng);
   if(!station) return null;
   const rawMins = await osrmRouteTime(userLat, userLng, station.lat, station.lng, profile);
   if(rawMins===null) return null;
-  const adjustedMins = Math.max(1, Math.round(rawMins * multiplier));
+  let adjustedMins = Math.max(1, Math.round(rawMins * multiplier));
+
+  // Sanity check: motorised modes (bike/auto/car) must be faster than walking
+  // If not, recalculate walking time and cap accordingly
+  if(["bike","auto","car"].includes(mode)) {
+    const walkRaw = await osrmRouteTime(userLat, userLng, station.lat, station.lng, "foot");
+    if(walkRaw && adjustedMins >= walkRaw) {
+      // Cap motorised time at 80% of walking time (they're always faster)
+      adjustedMins = Math.max(1, Math.round(walkRaw * 0.80));
+    }
+  }
+
   return {mins: adjustedMins, stationCoords:{lat:station.lat, lng:station.lng}, note:modeConfig.note};
 }
 
@@ -1015,7 +1032,7 @@ async function findNearestMetroStation(lat, lng, cityName, radiusM=5000) {
     try {
       const res = await fetch(
         `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`,
-        {headers:{"User-Agent":"Tranzit-App/1.0"}, signal:AbortSignal.timeout(10000)}
+        {headers:{"User-Agent":"Tranzit-App/1.0"}, signal:makeSignal(10000)}
       );
       const data = await res.json();
       if(!data.elements?.length) continue;
@@ -1083,6 +1100,27 @@ Use your geographic knowledge of ${city.name}'s transit network. Be precise abou
   const data = await res.json();
   const raw = data.content.map(b=>b.text||"").join("").trim().replace(/```json|```/g,"").trim();
   return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}")+1));
+}
+
+// ── SAFE ABORT SIGNAL — works on all Safari versions ─────────────────────────
+function makeSignal(ms) {
+  // AbortSignal.timeout only in Safari 16+; polyfill for older versions
+  if(typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+    return AbortSignal.timeout(ms);
+  }
+  const ctrl = new AbortController();
+  setTimeout(()=>ctrl.abort(), ms);
+  return ctrl.signal;
+}
+async function geocodeAddress(address, cityName) {
+  const q = encodeURIComponent(`${address}, ${cityName}`);
+  const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&accept-language=en`;
+  try {
+    const res = await fetch(url, {headers:{"User-Agent":"Tranzit-App/1.0"}, signal:makeSignal(6000)});
+    const data = await res.json();
+    if(data.length) return {lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon)};
+  } catch(e) {}
+  return null;
 }
 
 async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChange) {
@@ -1504,6 +1542,308 @@ function AddCityPanel({apiKey,onAdded,onClose,existingKeys}){
 }
 
 // ── RIDE HUB MODAL ────────────────────────────────────────────────────────────
+// ── NAVIGATE TO STATION TAB ────────────────────────────────────────────────────
+function NavigateTab({city, acc, accB}) {
+  const stations = STATION_COORDS[city.code] || [];
+  const [step,    setStep]    = useState("idle"); // idle | locating | results | error
+  const [navLoc,  setNavLoc]  = useState(null);
+  const [nearest, setNearest] = useState([]);
+  const [selected,setSelected]= useState(null);
+  const [transit, setTransit] = useState("metro"); // metro | bus | all
+
+  // Straight-line distance → realistic time estimates
+  const walkMin = km => Math.max(2, Math.round(km / 5 * 60));
+  const cabMin  = km => Math.max(2, Math.round(km / 20 * 60));
+
+  const detect = async () => {
+    setStep("locating"); setNearest([]); setSelected(null); setNavLoc(null);
+    try {
+      const pos = await new Promise((res,rej) => {
+        if(!navigator.geolocation){ rej(new Error("no_geo")); return; }
+        navigator.geolocation.getCurrentPosition(
+          p => res({lat: p.coords.latitude, lng: p.coords.longitude}),
+          e => rej(e),
+          {timeout:8000, enableHighAccuracy:true, maximumAge:15000}
+        );
+      });
+      setNavLoc(pos);
+      // Sort all stations by true distance, take top 5
+      const sorted = stations
+        .map(s => ({...s, km: parseFloat(haversineKm(pos.lat, pos.lng, s.lat, s.lng).toFixed(2))}))
+        .sort((a,b) => a.km - b.km)
+        .slice(0, 5);
+      setNearest(sorted);
+      setStep("results");
+    } catch(e) {
+      setStep("error");
+    }
+  };
+
+  const navigate = (station, mode) => {
+    const dest = encodeURIComponent(station.n + ", " + city.name);
+    const travel = mode === "walk" ? "walking" : "driving";
+    if(navLoc) {
+      window.open(
+        "https://www.google.com/maps/dir/" + navLoc.lat + "," + navLoc.lng +
+        "/" + dest + "/?travelmode=" + travel, "_blank"
+      );
+    } else {
+      window.open("https://www.google.com/maps/dir/My+Location/" + dest + "/?travelmode=" + travel, "_blank");
+    }
+  };
+
+  const searchOnMaps = (type) => {
+    if(navLoc) {
+      const q = type === "bus" ? "bus+stand+near+me" : "metro+station+near+me";
+      window.open("https://www.google.com/maps/search/" + q + "/@" + navLoc.lat + "," + navLoc.lng + ",15z", "_blank");
+    } else {
+      window.open("https://www.google.com/maps/search/transit+station+near+me/", "_blank");
+    }
+  };
+
+  // ── IDLE STATE ──────────────────────────────────────────────────────────────
+  if(step === "idle") return (
+    <div>
+      <div style={{textAlign:"center",padding:"24px 16px 20px"}}>
+        <div style={{fontSize:48,marginBottom:12}}>🧭</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.08em",
+          background:"linear-gradient(135deg,"+acc+","+accB+")",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:8}}>
+          FIND NEAREST TRANSIT
+        </div>
+        <div style={{fontSize:13,color:C.textDim,lineHeight:1.7,maxWidth:280,margin:"0 auto"}}>
+          Tap below to find the nearest metro stations and transit points to your current location
+        </div>
+      </div>
+
+      <button onClick={detect} style={{
+        width:"100%",
+        background:"linear-gradient(135deg,"+acc+","+accB+")",
+        border:"none",borderRadius:16,padding:"18px",cursor:"pointer",
+        fontWeight:700,fontSize:16,color:"#000",marginBottom:20,
+        display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+        boxShadow:"0 6px 24px "+acc+"55"}}>
+        <span style={{fontSize:24}}>📍</span>
+        Detect My Location
+      </button>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <button onClick={()=>searchOnMaps("metro")} style={{
+          background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,
+          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:24,marginBottom:6}}>🚇</div>
+          <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:2}}>Metro Stations</div>
+          <div style={{fontSize:10,color:C.muted}}>Open in Google Maps</div>
+        </button>
+        <button onClick={()=>searchOnMaps("bus")} style={{
+          background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,
+          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:24,marginBottom:6}}>🚌</div>
+          <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:2}}>Bus Stands</div>
+          <div style={{fontSize:10,color:C.muted}}>Open in Google Maps</div>
+        </button>
+      </div>
+      <div style={{fontSize:10,color:C.muted,textAlign:"center",lineHeight:1.6}}>
+        These open Google Maps with all nearby transit points shown on the map
+      </div>
+    </div>
+  );
+
+  // ── LOCATING STATE ──────────────────────────────────────────────────────────
+  if(step === "locating") return (
+    <div style={{textAlign:"center",padding:"60px 20px"}}>
+      <div style={{fontSize:42,animation:"pulse 1s ease-in-out infinite",marginBottom:16}}>📍</div>
+      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.1em",
+        color:acc,marginBottom:8}}>FINDING YOUR LOCATION</div>
+      <div style={{fontSize:12,color:C.muted}}>Getting GPS and finding nearest stations…</div>
+    </div>
+  );
+
+  // ── ERROR STATE ─────────────────────────────────────────────────────────────
+  if(step === "error") return (
+    <div>
+      <div style={{background:"rgba(245,166,35,0.10)",border:"1px solid rgba(245,166,35,0.35)",
+        borderRadius:14,padding:"20px 16px",marginBottom:16,textAlign:"center"}}>
+        <div style={{fontSize:36,marginBottom:10}}>📵</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#F5A623",marginBottom:8}}>Location Access Blocked</div>
+        <div style={{fontSize:11,color:C.textDim,lineHeight:1.8,marginBottom:4}}>
+          <strong style={{color:C.text}}>iPhone / Safari:</strong><br/>
+          Settings → Privacy & Security →<br/>Location Services → Safari →<br/>
+          <strong style={{color:"#F5A623"}}>While Using App</strong>
+        </div>
+        <div style={{fontSize:11,color:C.textDim,lineHeight:1.8,marginBottom:16}}>
+          <strong style={{color:C.text}}>Chrome:</strong> tap 🔒 in address bar →<br/>
+          Site Settings → Location → Allow
+        </div>
+        <button onClick={detect} style={{
+          background:"linear-gradient(135deg,"+acc+","+accB+")",
+          border:"none",borderRadius:10,padding:"11px 24px",cursor:"pointer",
+          fontWeight:700,fontSize:13,color:"#000",marginBottom:10}}>
+          ↻ Try Again
+        </button>
+      </div>
+
+      <div style={{fontSize:11,fontWeight:600,color:C.muted,textAlign:"center",
+        marginBottom:12,letterSpacing:"0.08em"}}>OR USE GOOGLE MAPS DIRECTLY</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <button onClick={()=>searchOnMaps("metro")} style={{
+          background:"linear-gradient(135deg,#1A73E8,#4285F4)",border:"none",
+          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:22,marginBottom:5}}>🚇</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#fff"}}>Nearest Metro</div>
+        </button>
+        <button onClick={()=>searchOnMaps("bus")} style={{
+          background:"linear-gradient(135deg,#1A73E8,#4285F4)",border:"none",
+          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:22,marginBottom:5}}>🚌</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#fff"}}>Nearest Bus</div>
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── RESULTS STATE ───────────────────────────────────────────────────────────
+  return (
+    <div>
+      {/* Location confirmed */}
+      <div style={{display:"flex",alignItems:"center",gap:10,
+        background:"rgba(0,212,170,0.08)",border:"1px solid rgba(0,212,170,0.25)",
+        borderRadius:11,padding:"10px 13px",marginBottom:14}}>
+        <span style={{fontSize:18}}>📍</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:10,color:C.emerald,fontWeight:600,letterSpacing:"0.06em"}}>LOCATION FOUND</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:1}}>
+            {navLoc.lat.toFixed(5)}, {navLoc.lng.toFixed(5)}
+          </div>
+        </div>
+        <button onClick={()=>{setStep("idle");setNearest([]);setSelected(null);}} style={{
+          background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,
+          borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:10,color:C.muted}}>
+          Reset
+        </button>
+      </div>
+
+      {/* Nearest stations */}
+      {nearest.length > 0 && (
+        <div>
+          <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>
+            🚇 {nearest.length} NEAREST METRO STATIONS IN {city.name.toUpperCase()}
+          </div>
+
+          {nearest.map(function(s, i) {
+            var isSelected = selected && selected.n === s.n;
+            var isFirst = i === 0;
+            return (
+              <div key={i}
+                onClick={()=>setSelected(isSelected ? null : s)}
+                style={{
+                  background: isSelected
+                    ? "linear-gradient(135deg,"+acc+"18,"+accB+"0E)"
+                    : isFirst ? "rgba(255,255,255,0.04)" : C.surface,
+                  border: "1px solid "+(isSelected ? acc+"55" : isFirst ? acc+"22" : C.border),
+                  borderRadius:14,padding:"14px",marginBottom:10,
+                  cursor:"pointer",transition:"all 0.2s"}}>
+
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  {/* Rank */}
+                  <div style={{width:36,height:36,borderRadius:10,flexShrink:0,
+                    background: isFirst
+                      ? "linear-gradient(135deg,"+acc+","+accB+")"
+                      : "rgba(255,255,255,0.08)",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontWeight:700,fontSize:15,
+                    color: isFirst ? "#000" : C.muted}}>
+                    {isFirst ? "★" : i+1}
+                  </div>
+
+                  {/* Info */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.n}</div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.line}</div>
+                  </div>
+
+                  {/* Distance */}
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
+                      fontSize:18,color:isFirst ? acc : C.text}}>{s.km}</div>
+                    <div style={{fontSize:9,color:C.muted}}>km away</div>
+                  </div>
+                </div>
+
+                {/* Time estimates */}
+                <div style={{display:"flex",gap:8,marginTop:10}}>
+                  <div style={{flex:1,background:"rgba(0,212,170,0.08)",
+                    border:"1px solid rgba(0,212,170,0.2)",
+                    borderRadius:9,padding:"7px",textAlign:"center"}}>
+                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚶 WALK</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
+                      fontSize:16,color:C.emerald}}>~{walkMin(s.km)}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
+                  </div>
+                  <div style={{flex:1,background:"rgba(79,195,247,0.08)",
+                    border:"1px solid rgba(79,195,247,0.2)",
+                    borderRadius:9,padding:"7px",textAlign:"center"}}>
+                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚗 CAB</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
+                      fontSize:16,color:C.sky}}>~{cabMin(s.km)}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
+                  </div>
+                </div>
+
+                {/* Navigation buttons — shown when selected */}
+                {isSelected && (
+                  <div style={{marginTop:12,display:"flex",gap:8,animation:"fadeIn 0.2s ease"}}>
+                    <button onClick={function(e){e.stopPropagation();navigate(s,"walk");}} style={{
+                      flex:1,background:"rgba(0,212,170,0.12)",
+                      border:"1px solid rgba(0,212,170,0.35)",
+                      borderRadius:10,padding:"11px 8px",cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                      fontWeight:700,fontSize:13,color:C.emerald}}>
+                      🚶 Walk Route
+                    </button>
+                    <button onClick={function(e){e.stopPropagation();navigate(s,"cab");}} style={{
+                      flex:1,background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+                      border:"none",borderRadius:10,padding:"11px 8px",cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                      fontWeight:700,fontSize:13,color:"#fff",
+                      boxShadow:"0 3px 12px rgba(26,115,232,0.4)"}}>
+                      🗺️ Drive Route
+                    </button>
+                  </div>
+                )}
+
+                {!isSelected && (
+                  <div style={{marginTop:8,fontSize:10,color:C.muted,textAlign:"center"}}>
+                    Tap to navigate →
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Bus stand search */}
+      <div style={{background:C.surface,border:"1px solid "+C.border,
+        borderRadius:13,padding:"13px",marginTop:6}}>
+        <div style={{fontSize:11,fontWeight:600,color:C.text,marginBottom:10}}>
+          🚌 Find Nearest Bus Stand
+        </div>
+        <div style={{fontSize:11,color:C.textDim,lineHeight:1.6,marginBottom:12}}>
+          Bus stand locations come from Google Maps — tap below to see all nearby bus stops on the map with live routes.
+        </div>
+        <button onClick={()=>searchOnMaps("bus")} style={{
+          width:"100%",background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+          border:"none",borderRadius:10,padding:"11px",cursor:"pointer",
+          fontWeight:700,fontSize:13,color:"#fff",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+          boxShadow:"0 3px 12px rgba(26,115,232,0.35)"}}>
+          🗺️ Show Nearest Bus Stands on Google Maps
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function RideHubModal({city, dest, onClose}) {
   const apps = RIDE_APPS[city.country] || RIDE_APPS["_default"];
   const acc  = city.accent, accB = city.accentB;
@@ -1884,6 +2224,44 @@ function TranzitApp(){
   const [toStationError, setToStationError] = useState("");
   const [plannerNearestStation, setPlannerNearestStation] = useState(null);
   const [stationInputFocused, setStationInputFocused] = useState(false);
+  const [geocodeBusy, setGeocodeBusy] = useState(false);
+  const [gpsError, setGpsError] = useState("");
+
+  // Geocode typed address → get coords → find nearest station
+  const resolveOriginAndFindStation = async (address) => {
+    if(!address || address.startsWith("📍")) return;
+    setGeocodeBusy(true);
+    try {
+      const coords = await geocodeAddress(address, city.name);
+      if(!coords) return;
+
+      setPlannerLocation({lat: coords.lat.toFixed(6), lng: coords.lng.toFixed(6)});
+
+      const local = findNearestStationLocal(coords.lat, coords.lng, city.code);
+      if(local) {
+        setPlannerNearestStation({name:local.n, distKm:local.distKm, line:local.line, source:"local"});
+        setToStationMins("");
+        autoFetchStationTime(toStationMode, local.n, {lat:coords.lat.toFixed(6), lng:coords.lng.toFixed(6)});
+        return;
+      }
+
+      if(apiKey) {
+        setPlannerNearestStation({name:"", source:"searching"});
+        const result = await findNearestStationClaude(coords.lat, coords.lng, city, apiKey).catch(()=>null);
+        if(result?.station) {
+          setPlannerNearestStation({name:result.station, distKm:result.distanceKm?.toFixed?.(1)||"", line:result.line||"", source:"claude"});
+          setToStationMins("");
+          autoFetchStationTime(toStationMode, result.station, {lat:coords.lat.toFixed(6), lng:coords.lng.toFixed(6)});
+        } else {
+          setPlannerNearestStation(null);
+        }
+      }
+    } catch(e) {
+      console.warn("resolveOriginAndFindStation error:", e.message);
+    } finally {
+      setGeocodeBusy(false); // Always clears — no more infinite spinner
+    }
+  };
 
   // Auto-fetch routing time when mode changes (needs GPS + station)
   const autoFetchStationTime = async (mode, knownStationName, coordsOverride) => {
@@ -1984,17 +2362,24 @@ function TranzitApp(){
       : def;
   };
 
-  const getLocation = () => new Promise((resolve) => {
-    if (!navigator.geolocation) { resolve({lat:"unknown",lng:"unknown"}); return; }
+  const getLocation = () => new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation not supported by this browser."));
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
       p => resolve({lat: p.coords.latitude.toFixed(6), lng: p.coords.longitude.toFixed(6)}),
-      () => resolve({lat:"unknown",lng:"unknown"}),
-      {timeout:6000, enableHighAccuracy:true}
+      err => {
+        if(err.code === 1) reject(new Error("PERMISSION_DENIED"));
+        else if(err.code === 2) reject(new Error("POSITION_UNAVAILABLE"));
+        else reject(new Error("TIMEOUT"));
+      },
+      {timeout:8000, enableHighAccuracy:true, maximumAge:30000}
     );
   });
 
   const sendSOS = async () => {
-    const coords = await getLocation();
+    const coords = await getLocation().catch(()=>({lat:"unknown",lng:"unknown"}));
     const msg    = buildSosMsg(coords);
     const phones = (sosSettings.contacts||[]).filter(c=>c&&c.phone);
 
@@ -2167,46 +2552,47 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
 
   const fetchPlannerLocation = async () => {
     setPlannerLocBusy(true);
+    setGpsError("");
     try {
       const c = await getLocation();
       setPlannerLocation(c);
       setPlannerOrigin("📍 My current location");
 
-      if(c.lat !== "unknown") {
-        const lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      const lat = parseFloat(c.lat), lng = parseFloat(c.lng);
 
-        // Strategy 1: Local station DB — instant, accurate, no network
-        const local = findNearestStationLocal(lat, lng, city.code);
-        if(local) {
-          setPlannerNearestStation({
-            name: local.n, distKm: local.distKm,
-            line: local.line, source: "local"
-          });
-          setToStationMins("");
-          autoFetchStationTime(toStationMode, local.n, c);
-          setPlannerLocBusy(false);
-          return;
-        }
-
-        // Strategy 2: Claude AI fallback for cities not in local DB
-        if(apiKey) {
-          setPlannerNearestStation({name:"", source:"searching"});
-          try {
-            const result = await findNearestStationClaude(lat, lng, city, apiKey);
-            if(result?.station) {
-              setPlannerNearestStation({
-                name: result.station,
-                distKm: result.distanceKm?.toFixed?.(1)||"",
-                line: result.line||"",
-                source: "claude"
-              });
-              setToStationMins("");
-              autoFetchStationTime(toStationMode, result.station, c);
-            }
-          } catch(e) { setPlannerNearestStation(null); }
-        }
+      // Strategy 1: Local station DB — instant, zero network
+      const local = findNearestStationLocal(lat, lng, city.code);
+      if(local) {
+        setPlannerNearestStation({name:local.n, distKm:local.distKm, line:local.line, source:"local"});
+        setToStationMins("");
+        autoFetchStationTime(toStationMode, local.n, c);
+        setPlannerLocBusy(false);
+        return;
       }
-    } catch(e) {}
+
+      // Strategy 2: Claude AI for non-DB cities
+      if(apiKey) {
+        setPlannerNearestStation({name:"", source:"searching"});
+        try {
+          const result = await findNearestStationClaude(lat, lng, city, apiKey);
+          if(result?.station) {
+            setPlannerNearestStation({name:result.station, distKm:result.distanceKm?.toFixed?.(1)||"", line:result.line||"", source:"claude"});
+            setToStationMins("");
+            autoFetchStationTime(toStationMode, result.station, c);
+          }
+        } catch(e) { setPlannerNearestStation(null); }
+      }
+
+    } catch(e) {
+      // GPS failed — show clear guidance
+      const msg = e.message === "PERMISSION_DENIED"
+        ? "Location access blocked. To fix: tap the 🔒 or ⓘ icon in your browser address bar → Site settings → Allow Location. Then try again."
+        : e.message === "POSITION_UNAVAILABLE"
+        ? "Your location could not be determined. Try moving to an open area or type your starting address manually."
+        : "Location request timed out. Check your GPS/location settings and try again.";
+      setGpsError(msg);
+      setPlannerOrigin("");
+    }
     setPlannerLocBusy(false);
   };
 
@@ -2245,7 +2631,7 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
 
   const TABS=[
     {id:"plan",    label:"Route AI",  icon:"🌐"},
-    {id:"planner", label:"Planner",   icon:"🕐"},
+    {id:"navigate",label:"Navigate",  icon:"🧭"},
     {id:"live",    label:"Live Intel",icon:"📡"},
     {id:"crowd",   label:"Crowd Map", icon:"👥"},
     {id:"rides",   label:"Ride Hub",  icon:"🚕"},
@@ -2694,560 +3080,9 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
           </div>
         )}
 
-        {/* ── JOURNEY PLANNER ── */}
-        {activeTab==="planner"&&(
-          <div>
-            {/* Hero */}
-            <div style={{background:`linear-gradient(135deg,${acc}16,${accB}0C)`,border:`1px solid ${acc}33`,
-              borderRadius:16,padding:"14px 16px",marginBottom:14,textAlign:"center"}}>
-              <div style={{fontSize:24,marginBottom:4}}>🕐</div>
-              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.08em",
-                background:`linear-gradient(135deg,${acc},${accB})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-                JOURNEY PLANNER
-              </div>
-              <div style={{fontSize:11,color:C.textDim,marginTop:3}}>
-                Tell us where you are and when you need to arrive — we'll tell you exactly when to leave
-              </div>
-            </div>
-
-            {/* Input card */}
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px",marginBottom:12}}>
-
-              {/* STARTING FROM */}
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:6}}>
-                  <span style={{color:C.emerald}}>●</span>&nbsp; STARTING FROM
-                </div>
-                <div style={{display:"flex",gap:7}}>
-                  <input value={plannerOrigin} onChange={e=>setPlannerOrigin(e.target.value)}
-                    placeholder={`e.g. ${city.defaultFrom}, Home address, Hotel…`}
-                    style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
-                      borderRadius:9,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
-                  <button onClick={fetchPlannerLocation} disabled={plannerLocBusy}
-                    title="Use my current location"
-                    style={{flexShrink:0,background:plannerLocation?`${C.emerald}22`:`${acc}18`,
-                      border:`1px solid ${plannerLocation?C.emerald:acc+"55"}`,
-                      borderRadius:9,padding:"0 12px",cursor:"pointer",fontSize:16,
-                      color:plannerLocation?C.emerald:acc,transition:"all 0.2s"}}>
-                    {plannerLocBusy?"⏳":"📍"}
-                  </button>
-                </div>
-                {plannerLocation&&plannerLocation.lat!=="unknown"&&(
-                  <div style={{fontSize:9,color:C.emerald,marginTop:4}}>
-                    ✓ GPS: {plannerLocation.lat}, {plannerLocation.lng}
-                  </div>
-                )}
-
-                {/* Nearest Station — known stations + Google Maps + editable */}
-                <div style={{marginTop:10,background:"rgba(0,0,0,0.2)",
-                  border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 13px"}}>
-                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:9}}>
-                    🚉 YOUR STARTING METRO STATION
-                  </div>
-
-                  {/* Station name — Claude auto-fills, user can correct */}
-                  <div style={{marginBottom:8}}>
-
-                    {/* Claude searching state */}
-                    {plannerNearestStation?.source==="searching" && (
-                      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:11,
-                        color:C.muted,marginBottom:8,padding:"8px 10px",
-                        background:"rgba(255,255,255,0.03)",borderRadius:8}}>
-                        <span style={{animation:"spin 1s linear infinite",display:"inline-block",fontSize:14}}>🤖</span>
-                        Claude is finding the nearest station to your GPS…
-                      </div>
-                    )}
-
-                    {/* Auto-filled result badge */}
-                    {plannerNearestStation?.name && plannerNearestStation.source!=="searching" && (
-                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:7,flexWrap:"wrap"}}>
-                        <div style={{fontSize:9,fontWeight:600,borderRadius:5,padding:"2px 7px",
-                          background:plannerNearestStation.source==="claude"?`rgba(0,212,170,0.15)`:`${acc}18`,
-                          color:plannerNearestStation.source==="claude"?"#A78BFA":
-                                plannerNearestStation.source==="local"?C.emerald:acc}}>
-                          {plannerNearestStation.source==="claude"?"🤖 Claude AI":
-                           plannerNearestStation.source==="local"?"📍 Local DB ✓":"✏️ Edited"}
-                        </div>
-                        {plannerNearestStation.distKm&&(
-                          <span style={{fontSize:9,color:C.muted}}>~{plannerNearestStation.distKm} km away</span>
-                        )}
-                        {plannerNearestStation.line&&(
-                          <span style={{fontSize:9,color:C.muted}}>· {plannerNearestStation.line}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Editable field — always visible */}
-                    <input
-                      value={plannerNearestStation?.source==="searching"?"":plannerNearestStation?.name||""}
-                      onChange={e=>{
-                        setPlannerNearestStation(s=>({...(s||{}),name:e.target.value,source:"edited"}));
-                      }}
-                      onBlur={()=>{
-                        if(plannerNearestStation?.name&&plannerLocation?.lat&&plannerLocation.lat!=="unknown"){
-                          setToStationMins("");
-                          autoFetchStationTime(toStationMode, plannerNearestStation.name, plannerLocation);
-                        }
-                      }}
-                      placeholder={plannerNearestStation?.source==="searching"
-                        ?"🤖 Finding station…"
-                        :"Station auto-fills when you tap 📍 · or type manually"}
-                      style={{width:"100%",background:"rgba(0,0,0,0.35)",
-                        border:`1.5px solid ${plannerNearestStation?.name&&plannerNearestStation.source!=="searching"?C.emerald+"77":C.border}`,
-                        borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,
-                        fontWeight:plannerNearestStation?.name&&plannerNearestStation.source!=="searching"?600:400,
-                        outline:"none",boxSizing:"border-box",marginBottom:5}}/>
-                    <div style={{fontSize:9,color:C.muted,lineHeight:1.6}}>
-                      {plannerNearestStation?.name&&plannerNearestStation.source!=="searching"
-                        ?"✓ Edit above if wrong — route time will recalculate automatically"
-                        :"Tap 📍 above to auto-detect your location and nearest station"}
-                    </div>
-                  </div>
-
-                  {/* Known stations quick-picks */}
-                  {city.stations && city.stations.length > 0 && (
-                    <div style={{marginBottom:9}}>
-                      <div style={{fontSize:9,color:C.muted,marginBottom:6}}>
-                        ⚡ OR PICK A KNOWN STATION:
-                      </div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                        {city.stations.map((s,i)=>{
-                          const active = plannerNearestStation?.name===s.stn;
-                          return(
-                            <button key={i} onClick={()=>{
-                              setPlannerNearestStation({name:s.stn,source:"known"});
-                              if(plannerLocation?.lat&&plannerLocation.lat!=="unknown"){
-                                setToStationMins("");
-                                autoFetchStationTime(toStationMode, s.stn, plannerLocation);
-                              }
-                            }} style={{
-                              background:active?`linear-gradient(135deg,${acc},${accB})`:"rgba(255,255,255,0.06)",
-                              color:active?"#000":C.textDim,
-                              border:`1px solid ${active?"transparent":C.border}`,
-                              borderRadius:8,padding:"5px 10px",cursor:"pointer",
-                              fontSize:10,transition:"all 0.15s"}}>
-                              {s.stn}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Google Maps finder */}
-                  <button onClick={()=>{
-                    const lat=plannerLocation?.lat, lng=plannerLocation?.lng;
-                    const url=(lat&&lat!=="unknown")
-                      ? `https://www.google.com/maps/search/metro+station/@${lat},${lng},15z`
-                      : `https://www.google.com/maps/search/metro+station+near+${encodeURIComponent(plannerOrigin||city.name)}`;
-                    window.open(url,"_blank");
-                  }} style={{
-                    width:"100%",background:"linear-gradient(135deg,#1A73E8,#4285F4)",
-                    border:"none",borderRadius:10,padding:"10px",
-                    cursor:"pointer",fontWeight:700,fontSize:12,color:"#fff",
-                    display:"flex",alignItems:"center",justifyContent:"center",gap:7,
-                    boxShadow:"0 3px 10px rgba(26,115,232,0.35)"}}>
-                    🗺️ Confirm on Google Maps — Find Nearest Station
-                  </button>
-                  <div style={{fontSize:9,color:C.muted,textAlign:"center",marginTop:5,lineHeight:1.6}}>
-                    Opens Google Maps pre-zoomed to your location · note the nearest metro station name · type it above
-                  </div>
-                </div>
-              </div>
-
-              {/* I NEED TO REACH */}
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:6}}>
-                  <span style={{color:C.crimson}}>●</span>&nbsp; I NEED TO REACH
-                </div>
-                <input value={plannerDest} onChange={e=>setPlannerDest(e.target.value)}
-                  placeholder={`e.g. ${city.defaultTo}, Office, Airport…`}
-                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
-                    borderRadius:9,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
-              </div>
-
-              {/* BY WHAT TIME */}
-              <div>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:6}}>
-                  <span style={{color:C.sky}}>●</span>&nbsp; MUST ARRIVE BY
-                </div>
-                <input type="time" value={plannerArrival} onChange={e=>setPlannerArrival(e.target.value)}
-                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,
-                    borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",
-                    boxSizing:"border-box",colorScheme:"dark"}}/>
-              </div>
-            </div>
-
-            {/* Quick times — full 24h spread */}
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>⚡ QUICK ARRIVAL TIMES</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {["05:00","05:30","06:00","06:30","07:00","07:30","08:00","08:30",
-                  "09:00","09:30","10:00","11:00","12:00","13:00","14:00","15:00",
-                  "16:00","17:00","17:30","18:00","18:30","19:00","20:00","21:00",
-                  "22:00","23:00"].map(t=>(
-                  <button key={t} onClick={()=>setPlannerArrival(t)} style={{
-                    background:plannerArrival===t?`linear-gradient(135deg,${acc},${accB})`:C.surface,
-                    color:plannerArrival===t?"#000":C.textDim,
-                    border:`1px solid ${plannerArrival===t?"transparent":C.border}`,
-                    borderRadius:7,padding:"4px 9px",cursor:"pointer",
-                    fontSize:10,fontFamily:"'DM Mono',monospace",transition:"all 0.15s"}}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* HOW DO YOU GET TO THE STATION */}
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"13px 14px",marginBottom:12}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>
-                🚏 HOW WILL YOU GET TO THE METRO STATION?
-              </div>
-              <div style={{fontSize:10,color:C.textDim,marginBottom:10,lineHeight:1.6}}>
-                This affects your departure time — a 10-min cycle ride vs a 3-min car drop makes a real difference.
-              </div>
-
-              {/* Mode grid */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:7,marginBottom:12}}>
-                {[
-                  {id:"walk",  icon:"🚶", label:"Walk",    gmMode:"walking"},
-                  {id:"cycle", icon:"🚲", label:"Cycle",   gmMode:"bicycling"},
-                  {id:"bike",  icon:"🛵", label:"Bike",    gmMode:"driving"},
-                  {id:"auto",  icon:"🛺", label:"Auto",    gmMode:"driving"},
-                  {id:"car",   icon:"🚗", label:"Car/Cab", gmMode:"driving"},
-                ].map(m=>(
-                  <button key={m.id} onClick={()=>{
-                    setToStationMode(m.id);
-                    setToStationMins(""); // clear — will auto-fetch
-                    autoFetchStationTime(m.id);
-                  }} style={{
-                    background:toStationMode===m.id?`linear-gradient(135deg,${acc},${accB})`:"rgba(255,255,255,0.04)",
-                    border:`1px solid ${toStationMode===m.id?"transparent":C.border}`,
-                    borderRadius:10,padding:"10px 4px",cursor:"pointer",textAlign:"center"}}>
-                    <div style={{fontSize:18,marginBottom:3}}>{m.icon}</div>
-                    <div style={{fontSize:9,fontWeight:600,color:toStationMode===m.id?"#000":C.textDim}}>{m.label}</div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Auto-fetched time display */}
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:5}}>
-                  ⏱ TIME TO REACH STATION
-                </div>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <div style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1.5px solid ${toStationMins?acc+"88":C.border}`,
-                    borderRadius:9,padding:"10px 14px",
-                    display:"flex",alignItems:"center",justifyContent:"center",gap:8,minHeight:44}}>
-                    {toStationBusy ? (
-                      <><span style={{fontSize:14,animation:"spin 1s linear infinite",display:"inline-block"}}>⚙️</span>
-                        <span style={{fontSize:12,color:C.muted}}>Fetching real route time…</span></>
-                    ) : toStationMins ? (
-                      <><span style={{fontFamily:"'DM Mono',monospace",fontSize:24,fontWeight:700,color:acc}}>{toStationMins}</span>
-                        <span style={{fontSize:13,color:C.textDim}}>minutes</span>
-                        <span style={{fontSize:10,background:`${C.emerald}18`,color:C.emerald,
-                          borderRadius:5,padding:"2px 7px",marginLeft:4}}>via OpenStreetMap</span></>
-                    ) : toStationError ? (
-                      <span style={{fontSize:11,color:toStationError.startsWith("ℹ️")?"#F5A623":C.crimson,lineHeight:1.5}}>{toStationError}</span>
-                    ) : (
-                      <span style={{fontSize:11,color:C.muted}}>Select a mode above to auto-fetch time</span>
-                    )}
-                  </div>
-                  {/* Manual override */}
-                  <button onClick={()=>{
-                    const v = prompt("Enter time in minutes manually:");
-                    if(v&&!isNaN(parseInt(v))) setToStationMins(String(parseInt(v)));
-                  }} style={{flexShrink:0,background:"rgba(255,255,255,0.05)",
-                    border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 11px",
-                    cursor:"pointer",color:C.muted,fontSize:11}}>
-                    ✏️
-                  </button>
-                </div>
-                {toStationMins&&!toStationBusy&&(
-                  <div style={{fontSize:9,color:C.muted,marginTop:4}}>
-                    Tap ✏️ to override manually · <span style={{color:acc,cursor:"pointer"}}
-                      onClick={()=>autoFetchStationTime(toStationMode)}>↻ Re-fetch</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Manual Google Maps fallback */}
-              {(plannerLocation||plannerOrigin)&&(
-                <div>
-                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:6}}>
-                    📍 VERIFY ON GOOGLE MAPS (if auto-fetch seems wrong)
-                  </div>
-                  <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                    {[
-                      {id:"walk",  icon:"🚶", label:"Walking",  gmMode:"walking"},
-                      {id:"cycle", icon:"🚲", label:"Cycling",  gmMode:"bicycling"},
-                      {id:"auto",  icon:"🛺", label:"Driving",  gmMode:"driving"},
-                    ].map(m=>(
-                      <button key={m.id} onClick={()=>{
-                        const origin = plannerLocation&&plannerLocation.lat!=="unknown"
-                          ? `${plannerLocation.lat},${plannerLocation.lng}`
-                          : encodeURIComponent(plannerOrigin||city.name);
-                        const dest = encodeURIComponent(`metro station near ${plannerOrigin||city.name}`);
-                        window.open(`https://www.google.com/maps/dir/${origin}/${dest}/?travelmode=${m.gmMode}`,"_blank");
-                      }} style={{
-                        background:"rgba(26,115,232,0.10)",border:"1px solid rgba(26,115,232,0.3)",
-                        borderRadius:8,padding:"6px 10px",cursor:"pointer",
-                        fontSize:10,color:"#4FC3F7",
-                        display:"flex",alignItems:"center",gap:5}}>
-                        {m.icon} {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Calculate button */}
-            <button onClick={calcDepartureTime}
-              disabled={plannerLoading||!plannerDest||!plannerArrival||toStationBusy}
-              style={{width:"100%",
-                background:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)
-                  ?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${acc},${accB})`,
-                border:"none",borderRadius:12,padding:"13px",
-                cursor:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)?"not-allowed":"pointer",
-                fontWeight:700,fontSize:13,
-                color:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)?C.muted:"#000",
-                marginBottom:14,
-                boxShadow:(plannerLoading||!plannerDest||!plannerArrival||toStationBusy)?"none":`0 4px 18px ${acc}44`,
-                transition:"all 0.25s"}}>
-              {toStationBusy?"⏳ Fetching route time…":plannerLoading?"🤖 Calculating your journey…":"🕐 Calculate Departure Time"}
-            </button>
-
-            {/* Error */}
-            {plannerResult?.error&&(
-              <div style={{background:"rgba(255,68,102,0.09)",border:"1px solid rgba(255,68,102,0.3)",
-                borderRadius:11,padding:"12px 14px",fontSize:12,color:C.crimson,animation:"fadeIn 0.3s ease",marginBottom:10}}>
-                ⚠️ {plannerResult.error}
-              </div>
-            )}
-
-            {/* Results */}
-            {plannerResult&&!plannerResult.error&&!plannerLoading&&(
-              <div style={{animation:"fadeIn 0.35s ease"}}>
-
-                {/* Peak warning */}
-                {plannerResult.peakWarning&&(
-                  <div style={{background:"rgba(245,166,35,0.13)",border:"1px solid rgba(245,166,35,0.35)",
-                    borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#F5A623",fontWeight:600,
-                    display:"flex",alignItems:"center",gap:7}}>
-                    ⚠️ Peak hour detected — extra buffer time included
-                  </div>
-                )}
-
-                {/* LEAVE BY hero */}
-                <div style={{background:`linear-gradient(135deg,${acc}18,${accB}0C)`,
-                  border:`1px solid ${acc}44`,borderRadius:16,padding:"18px",marginBottom:12,textAlign:"center"}}>
-                  <div style={{fontSize:10,color:C.muted,letterSpacing:"0.14em",marginBottom:4}}>LEAVE BY</div>
-                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:44,fontWeight:700,color:acc,lineHeight:1}}>
-                    {plannerResult.departBy?.split("—")[0]?.trim()||plannerResult.departBy}
-                  </div>
-                  <div style={{fontSize:11,color:C.textDim,marginTop:6}}>
-                    from <strong style={{color:C.text}}>{plannerOrigin||"your location"}</strong>
-                  </div>
-                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                    to reach <strong style={{color:C.text}}>{plannerDest}</strong> by {plannerArrival}
-                  </div>
-                </div>
-
-                {/* NEAREST STATION + Google Maps */}
-                {plannerResult.nearestStation&&(
-                  <div style={{background:C.surface,border:`1px solid ${C.border}`,
-                    borderRadius:13,padding:14,marginBottom:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                      <div style={{fontSize:11,fontWeight:600,color:acc,letterSpacing:"0.08em"}}>
-                        🚉 YOUR STARTING STATION
-                      </div>
-                      <div style={{fontSize:9,background:"rgba(245,166,35,0.15)",color:"#F5A623",
-                        borderRadius:5,padding:"2px 7px",fontWeight:600}}>AI ESTIMATE</div>
-                    </div>
-
-                    {/* ⚠️ Accuracy warning */}
-                    <div style={{background:"rgba(245,166,35,0.10)",border:"1px solid rgba(245,166,35,0.3)",
-                      borderRadius:9,padding:"8px 11px",marginBottom:10,
-                      display:"flex",gap:7,alignItems:"flex-start"}}>
-                      <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
-                      <div style={{fontSize:10,color:"#F5A623",lineHeight:1.6}}>
-                        <strong>This station may not be accurate.</strong> The AI estimates the nearest station based on your area — it does not have precise GPS-to-station mapping. Please verify using the "Find Nearest Station" button below and correct the name if needed.
-                      </div>
-                    </div>
-
-                    {/* Editable station name */}
-                    <div style={{marginBottom:10}}>
-                      <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:5}}>
-                        STATION NAME — tap to correct if wrong
-                      </div>
-                      <input
-                        value={plannerResult.nearestStation}
-                        onChange={e=>setPlannerResult(r=>({...r,nearestStation:e.target.value}))}
-                        style={{width:"100%",background:"rgba(0,0,0,0.3)",
-                          border:`1.5px solid ${acc}55`,borderRadius:9,
-                          padding:"9px 12px",color:C.text,fontSize:13,
-                          outline:"none",boxSizing:"border-box",fontWeight:600}}/>
-                      <div style={{fontSize:9,color:C.muted,marginTop:4}}>
-                        {plannerResult.stationDistanceKm&&`~${plannerResult.stationDistanceKm} km · `}
-                        {plannerResult.walkToStation&&`~${plannerResult.walkToStation} min walk (AI estimate)`}
-                      </div>
-                    </div>
-
-                    {/* Two action buttons */}
-                    <div style={{display:"flex",gap:8,marginBottom:6}}>
-                      {/* Find nearest station on Google Maps */}
-                      <button onClick={()=>{
-                        const loc = plannerResult._coords&&plannerResult._coords.lat!=="unknown"
-                          ? `${plannerResult._coords.lat},${plannerResult._coords.lng}`
-                          : `${plannerOrigin||city.name}`;
-                        const q = encodeURIComponent(`metro station near ${plannerOrigin||city.name}`);
-                        window.open(`https://www.google.com/maps/search/${q}/@${plannerResult._coords?.lat||"17.4"},${plannerResult._coords?.lng||"78.4"},14z`,"_blank");
-                      }} style={{
-                        flex:1,background:"rgba(255,107,26,0.12)",
-                        border:`1px solid ${acc}44`,borderRadius:10,padding:"10px 8px",
-                        cursor:"pointer",fontWeight:700,fontSize:11,color:acc,
-                        display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                        🔍 Find Nearest Station
-                      </button>
-
-                      {/* Navigate to corrected station */}
-                      <button onClick={()=>{
-                        const dest = encodeURIComponent(plannerResult.nearestStation+", "+city.name);
-                        let url;
-                        if(plannerResult._coords&&plannerResult._coords.lat!=="unknown"){
-                          const {lat,lng}=plannerResult._coords;
-                          url=`https://www.google.com/maps/dir/${lat},${lng}/${dest}/`;
-                        } else {
-                          url=`https://www.google.com/maps/search/${dest}`;
-                        }
-                        window.open(url,"_blank");
-                      }} style={{
-                        flex:1,background:"linear-gradient(135deg,#1A73E8,#4285F4)",
-                        border:"none",borderRadius:10,padding:"10px 8px",
-                        cursor:"pointer",fontWeight:700,fontSize:11,color:"#fff",
-                        display:"flex",alignItems:"center",justifyContent:"center",gap:5,
-                        boxShadow:"0 3px 10px rgba(26,115,232,0.4)"}}>
-                        🗺️ Navigate There
-                      </button>
-                    </div>
-
-                    {/* Route mode buttons */}
-                    <div style={{marginBottom:8}}>
-                      <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>
-                        🗺️ HOW DO YOU WANT TO REACH THE STATION?
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-                        {[
-                          {icon:"🚶",label:"Walking",    mode:"walking",   color:"#00D4AA", note:"Recommended"},
-                          {icon:"🚗",label:"Driving",    mode:"driving",   color:"#4FC3F7", note:""},
-                          {icon:"🚲",label:"Cycling",    mode:"bicycling", color:"#A78BFA", note:""},
-                          {icon:"🚌",label:"By Transit", mode:"transit",   color:"#F5A623", note:""},
-                        ].map((opt,i)=>(
-                          <button key={i} onClick={()=>{
-                            const dest = encodeURIComponent(plannerResult.nearestStation+", "+city.name);
-                            let url;
-                            if(plannerResult._coords&&plannerResult._coords.lat!=="unknown"){
-                              const {lat,lng}=plannerResult._coords;
-                              url=`https://www.google.com/maps/dir/${lat},${lng}/${dest}/@${lat},${lng},15z/data=!4m2!4m1!3e${opt.mode==="walking"?"2":opt.mode==="bicycling"?"1":opt.mode==="transit"?"3":"0"}`;
-                            } else {
-                              const origin = encodeURIComponent(plannerOrigin||city.name);
-                              url=`https://www.google.com/maps/dir/${origin}/${dest}/?travelmode=${opt.mode}`;
-                            }
-                            window.open(url,"_blank");
-                          }} style={{
-                            background:`${opt.color}12`,
-                            border:`1px solid ${opt.color}44`,
-                            borderRadius:10,padding:"10px 8px",cursor:"pointer",
-                            textAlign:"center",transition:"all 0.18s"}}>
-                            <div style={{fontSize:20,marginBottom:4}}>{opt.icon}</div>
-                            <div style={{fontSize:11,fontWeight:700,color:opt.color}}>{opt.label}</div>
-                            {opt.note&&<div style={{fontSize:8,color:opt.color,opacity:0.7,marginTop:2}}>{opt.note}</div>}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Apple Maps option for iOS */}
-                    <button onClick={()=>{
-                      const dest = encodeURIComponent(plannerResult.nearestStation+", "+city.name);
-                      const coords = plannerResult._coords;
-                      const url = coords&&coords.lat!=="unknown"
-                        ? `http://maps.apple.com/?saddr=${coords.lat},${coords.lng}&daddr=${dest}&dirflg=w`
-                        : `http://maps.apple.com/?q=${dest}`;
-                      window.open(url,"_blank");
-                    }} style={{
-                      width:"100%",background:"rgba(255,255,255,0.04)",
-                      border:`1px solid ${C.border}`,borderRadius:9,padding:"8px",
-                      cursor:"pointer",color:C.textDim,fontSize:11,
-                      display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                      🍎 Open in Apple Maps (iOS)
-                    </button>
-
-                    <div style={{fontSize:8,color:C.muted,textAlign:"center",marginTop:6,lineHeight:1.5}}>
-                      All navigation options open in Google Maps or Apple Maps — choose walking for the most accurate route to the station entrance.
-                    </div>
-                  </div>
-                )}
-
-                {/* Journey breakdown */}
-                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
-                  <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:12,letterSpacing:"0.08em"}}>⏱ FULL JOURNEY BREAKDOWN</div>
-                  {(()=>{
-                    const modeIcons={walk:"🚶",cycle:"🚲",bike:"🛵",auto:"🛺",car:"🚗"};
-                    const modeLabels={walk:"Walk to station",cycle:"Cycle to station",bike:"Ride to station",auto:"Auto to station",car:"Drive to station"};
-                    return [
-                      {l:modeLabels[toStationMode]||"Travel to station", v:plannerResult.timeToStation!=null?`${plannerResult.timeToStation} min`:`${toStationMins||"?"} min`, c:C.emerald, icon:modeIcons[toStationMode]||"🚏"},
-                      {l:"Transit time",              v:`${plannerResult.transitTime} min`,                                           c:accB,      icon:"🚇"},
-                      {l:"Walk to destination",       v:plannerResult.walkFromStation!=null?`${plannerResult.walkFromStation} min`:"—",c:C.sky,    icon:"🚶"},
-                      {l:"Safety buffer",             v:`${plannerResult.bufferTime} min`,                                            c:"#A78BFA", icon:"🛡️"},
-                      {l:"Total door-to-door",        v:`${plannerResult.totalJourney} min`,                                          c:acc,       icon:"📍", bold:true},
-                    ];
-                  })().map((row,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:9,
-                      padding:"9px 0",borderBottom:i<4?`1px solid rgba(255,255,255,0.05)`:"none",
-                      background:i===0?`${C.emerald}08`:"transparent",
-                      borderRadius:i===0?6:0,paddingLeft:i===0?6:0}}>
-                      <span style={{fontSize:14,flexShrink:0}}>{row.icon}</span>
-                      <div style={{flex:1,fontSize:12,color:row.bold?C.text:C.textDim,fontWeight:row.bold?700:400}}>{row.l}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:row.c}}>{row.v}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Route suggestion */}
-                {plannerResult.route&&(
-                  <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}}>
-                    <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:6}}>🗺️ FULL ROUTE</div>
-                    <div style={{fontSize:12,color:C.text,lineHeight:1.7}}>{plannerResult.route}</div>
-                  </div>
-                )}
-
-                {/* AI tip */}
-                {plannerResult.tip&&(
-                  <div style={{background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.18)",
-                    borderRadius:11,padding:"10px 13px",fontSize:11,color:C.textDim,lineHeight:1.65,marginBottom:10}}>
-                    🤖 {plannerResult.tip}
-                  </div>
-                )}
-
-                {/* Disclaimer */}
-                <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,
-                  borderRadius:10,padding:"9px 12px",fontSize:9,color:C.muted,lineHeight:1.6}}>
-                  ⚠️ Times are AI estimates. Always verify departure times and platform details with the official {city.transitLabel} app or website before travel.
-                </div>
-              </div>
-            )}
-
-            {/* Empty state */}
-            {!plannerResult&&!plannerLoading&&(
-              <div style={{textAlign:"center",padding:"18px 0",color:C.muted}}>
-                <div style={{fontSize:32,marginBottom:8}}>🗓️</div>
-                <div style={{fontSize:12,color:C.textDim}}>Enter your starting point, destination and arrival time</div>
-                <div style={{fontSize:10,marginTop:4}}>AI calculates your departure time and shows how to reach your transit station</div>
-              </div>
-            )}
-          </div>
+        {/* ── NAVIGATE TAB ── */}
+        {activeTab==="navigate"&&(
+          <NavigateTab city={city} acc={acc} accB={accB}/>
         )}
 
         {/* ── LIVE INTEL ── */}
