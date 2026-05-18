@@ -1545,22 +1545,18 @@ function AddCityPanel({apiKey,onAdded,onClose,existingKeys}){
 // ── NAVIGATE TO STATION TAB ────────────────────────────────────────────────────
 function NavigateTab({city, acc, accB}) {
   const stations = STATION_COORDS[city.code] || [];
-  const [step,    setStep]    = useState("idle"); // idle | locating | results | error
-  const [navLoc,  setNavLoc]  = useState(null);
+  const [step,    setStep]    = useState("idle");    // idle | locating | transit | results | error
+  const [navLoc,  setNavLoc]  = useState(null);      // {lat, lng}
+  const [transit, setTransit] = useState(null);      // "metro" | "bus"
   const [nearest, setNearest] = useState([]);
-  const [selected,setSelected]= useState(null);
-  const [transit, setTransit] = useState("metro"); // metro | bus | all
 
-  // Straight-line distance → realistic time estimates
-  const [loadingProgress, setLoadingProgress] = useState(0);
-
+  // Get GPS only — no OSRM, no time estimates
   const detect = async () => {
-    setStep("locating"); setNearest([]); setSelected(null); setNavLoc(null);
-    setLoadingProgress(0);
+    setStep("locating");
+    setNavLoc(null); setNearest([]); setTransit(null);
     try {
-      // Step 1: Get GPS
-      const pos = await new Promise((res,rej) => {
-        if(!navigator.geolocation){ rej(new Error("no_geo")); return; }
+      const pos = await new Promise((res, rej) => {
+        if(!navigator.geolocation) { rej(new Error("no_geo")); return; }
         navigator.geolocation.getCurrentPosition(
           p => res({lat: p.coords.latitude, lng: p.coords.longitude}),
           e => rej(e),
@@ -1568,344 +1564,305 @@ function NavigateTab({city, acc, accB}) {
         );
       });
       setNavLoc(pos);
-      setLoadingProgress(10);
-
-      // Step 2: Pre-filter by straight-line to avoid calling OSRM for distant stations
-      const preFiltered = stations
-        .map(s => ({...s, slKm: parseFloat(haversineKm(pos.lat, pos.lng, s.lat, s.lng).toFixed(2))}))
-        .sort((a,b) => a.slKm - b.slKm)
-        .slice(0, 8); // top 8 by straight-line, then get real road distances for these
-
-      // Step 3: Fetch REAL road distances + walk times from OSRM for top 8
-      const results = [];
-      for(let i = 0; i < preFiltered.length; i++) {
-        const s = preFiltered[i];
-        try {
-          // Walking route
-          const walkUrl = "https://router.project-osrm.org/route/v1/foot/" +
-            pos.lng + "," + pos.lat + ";" + s.lng + "," + s.lat + "?overview=false";
-          const walkRes = await fetch(walkUrl, {signal: makeSignal(6000)});
-          const walkData = await walkRes.json();
-
-          // Driving route
-          const driveUrl = "https://router.project-osrm.org/route/v1/car/" +
-            pos.lng + "," + pos.lat + ";" + s.lng + "," + s.lat + "?overview=false";
-          const driveRes = await fetch(driveUrl, {signal: makeSignal(6000)});
-          const driveData = await driveRes.json();
-
-          if(walkData.code === "Ok" && walkData.routes[0]) {
-            const walkRoute = walkData.routes[0];
-            const driveRoute = (driveData.code === "Ok" && driveData.routes[0]) ? driveData.routes[0] : null;
-            results.push({
-              ...s,
-              roadKm:   parseFloat((walkRoute.distance / 1000).toFixed(1)),
-              walkMins: Math.ceil(walkRoute.duration / 60),
-              driveMins: driveRoute ? Math.ceil(driveRoute.duration / 60) : null,
-              driveKm:   driveRoute ? parseFloat((driveRoute.distance / 1000).toFixed(1)) : null,
-            });
-          } else {
-            // OSRM failed for this station — keep with straight-line fallback
-            results.push({...s, roadKm: s.slKm, walkMins: Math.round(s.slKm*1.4/5*60), driveMins: Math.round(s.slKm*1.4/20*60), driveKm: s.slKm});
-          }
-        } catch(e) {
-          results.push({...s, roadKm: s.slKm, walkMins: Math.round(s.slKm*1.4/5*60), driveMins: Math.round(s.slKm*1.4/20*60), driveKm: s.slKm});
-        }
-        setLoadingProgress(10 + Math.round((i+1)/preFiltered.length * 88));
-      }
-
-      // Sort by actual road walk distance, take top 5
-      const sorted = results.sort((a,b) => a.roadKm - b.roadKm).slice(0,5);
-      setNearest(sorted);
-      setStep("results");
+      setStep("transit"); // Ask user: metro or bus?
     } catch(e) {
       setStep("error");
     }
-    setLoadingProgress(100);
   };
 
-  const navigate = (station, mode) => {
-    const dest = encodeURIComponent(station.n + ", " + city.name);
-    const travel = mode === "walk" ? "walking" : "driving";
-    // Always use My+Location as origin — Google Maps shows "My Location" cleanly
-    // and uses its own GPS rather than showing a nearby business name
+  // User picked metro — sort stations by straight-line, show list
+  const pickMetro = () => {
+    setTransit("metro");
+    const sorted = stations
+      .map(s => ({...s, slKm: parseFloat(haversineKm(navLoc.lat, navLoc.lng, s.lat, s.lng).toFixed(2))}))
+      .sort((a,b) => a.slKm - b.slKm);
+    setNearest(sorted);
+    setStep("results");
+  };
+
+  // Open Google Maps walking route to station
+  const openWalk = (s) => {
     window.open(
-      "https://www.google.com/maps/dir/My+Location/" + dest + "/?travelmode=" + travel,
-      "_blank"
+      "https://www.google.com/maps/dir/My+Location/" +
+      encodeURIComponent(s.n + ", " + city.name) +
+      "/?travelmode=walking", "_blank"
     );
   };
 
-  const searchOnMaps = (type) => {
-    const q = type === "bus" ? "bus+stand+near+me" : "metro+station+near+me";
-    window.open("https://www.google.com/maps/search/" + q + "/", "_blank");
+  // Open Google Maps driving route to station
+  const openDrive = (s) => {
+    window.open(
+      "https://www.google.com/maps/dir/My+Location/" +
+      encodeURIComponent(s.n + ", " + city.name) +
+      "/?travelmode=driving", "_blank"
+    );
   };
 
-  // ── IDLE STATE ──────────────────────────────────────────────────────────────
+  // Open bus search on Google Maps
+  const openBus = () => {
+    window.open("https://www.google.com/maps/search/bus+stand+near+me/", "_blank");
+  };
+
+  const coordsUrl = navLoc
+    ? "https://www.google.com/maps?q=" + navLoc.lat + "," + navLoc.lng
+    : "";
+
+  // ── IDLE ────────────────────────────────────────────────────────────────────
   if(step === "idle") return (
     <div>
-      <div style={{textAlign:"center",padding:"24px 16px 20px"}}>
-        <div style={{fontSize:48,marginBottom:12}}>🧭</div>
+      <div style={{textAlign:"center",padding:"28px 16px 22px"}}>
+        <div style={{fontSize:46,marginBottom:12}}>🧭</div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.08em",
           background:"linear-gradient(135deg,"+acc+","+accB+")",
           WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:8}}>
           FIND NEAREST TRANSIT
         </div>
-        <div style={{fontSize:13,color:C.textDim,lineHeight:1.7,maxWidth:280,margin:"0 auto"}}>
-          Tap below to find the nearest metro stations and transit points to your current location
+        <div style={{fontSize:12,color:C.textDim,lineHeight:1.7}}>
+          Detect your location, then choose metro or bus — we show the nearest points in order
         </div>
       </div>
-
       <button onClick={detect} style={{
         width:"100%",
         background:"linear-gradient(135deg,"+acc+","+accB+")",
         border:"none",borderRadius:16,padding:"18px",cursor:"pointer",
-        fontWeight:700,fontSize:16,color:"#000",marginBottom:20,
+        fontWeight:700,fontSize:16,color:"#000",
         display:"flex",alignItems:"center",justifyContent:"center",gap:10,
-        boxShadow:"0 6px 24px "+acc+"55"}}>
+        boxShadow:"0 6px 24px "+acc+"44"}}>
         <span style={{fontSize:24}}>📍</span>
         Detect My Location
       </button>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-        <button onClick={()=>searchOnMaps("metro")} style={{
-          background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,
-          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style={{fontSize:24,marginBottom:6}}>🚇</div>
-          <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:2}}>Metro Stations</div>
-          <div style={{fontSize:10,color:C.muted}}>Open in Google Maps</div>
-        </button>
-        <button onClick={()=>searchOnMaps("bus")} style={{
-          background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,
-          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style={{fontSize:24,marginBottom:6}}>🚌</div>
-          <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:2}}>Bus Stands</div>
-          <div style={{fontSize:10,color:C.muted}}>Open in Google Maps</div>
-        </button>
-      </div>
-      <div style={{fontSize:10,color:C.muted,textAlign:"center",lineHeight:1.6}}>
-        These open Google Maps with all nearby transit points shown on the map
-      </div>
     </div>
   );
 
-  // ── LOCATING STATE ──────────────────────────────────────────────────────────
+  // ── LOCATING ─────────────────────────────────────────────────────────────────
   if(step === "locating") return (
-    <div style={{textAlign:"center",padding:"50px 20px"}}>
-      <div style={{fontSize:42,animation:"pulse 1s ease-in-out infinite",marginBottom:16}}>📍</div>
+    <div style={{textAlign:"center",padding:"70px 20px"}}>
+      <div style={{fontSize:44,animation:"pulse 1s ease-in-out infinite",marginBottom:14}}>📍</div>
       <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.1em",
-        color:acc,marginBottom:8}}>FINDING YOUR LOCATION</div>
-      <div style={{fontSize:12,color:C.muted,marginBottom:20}}>
-        {loadingProgress < 10 ? "Getting GPS…" :
-         loadingProgress < 95 ? "Calculating real road distances to each station via OpenStreetMap…" :
-         "Almost done…"}
-      </div>
-      {/* Progress bar */}
-      <div style={{background:"rgba(255,255,255,0.08)",borderRadius:6,height:6,margin:"0 20px"}}>
-        <div style={{height:"100%",borderRadius:6,
-          background:"linear-gradient(90deg,"+acc+","+accB+")",
-          width:loadingProgress+"%",transition:"width 0.4s ease"}}/>
-      </div>
-      <div style={{fontSize:10,color:C.muted,marginTop:8}}>{loadingProgress}%</div>
+        color:acc,marginBottom:8}}>GETTING YOUR LOCATION…</div>
+      <div style={{fontSize:11,color:C.muted}}>Allow location access if prompted</div>
     </div>
   );
 
-  // ── ERROR STATE ─────────────────────────────────────────────────────────────
+  // ── ERROR ─────────────────────────────────────────────────────────────────────
   if(step === "error") return (
     <div>
       <div style={{background:"rgba(245,166,35,0.10)",border:"1px solid rgba(245,166,35,0.35)",
-        borderRadius:14,padding:"20px 16px",marginBottom:16,textAlign:"center"}}>
-        <div style={{fontSize:36,marginBottom:10}}>📵</div>
-        <div style={{fontSize:14,fontWeight:700,color:"#F5A623",marginBottom:8}}>Location Access Blocked</div>
-        <div style={{fontSize:11,color:C.textDim,lineHeight:1.8,marginBottom:4}}>
+        borderRadius:14,padding:"22px 16px",marginBottom:16,textAlign:"center"}}>
+        <div style={{fontSize:38,marginBottom:10}}>📵</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#F5A623",marginBottom:10}}>Location Access Blocked</div>
+        <div style={{fontSize:11,color:C.textDim,lineHeight:1.85,marginBottom:16}}>
           <strong style={{color:C.text}}>iPhone / Safari:</strong><br/>
-          Settings → Privacy & Security →<br/>Location Services → Safari →<br/>
-          <strong style={{color:"#F5A623"}}>While Using App</strong>
-        </div>
-        <div style={{fontSize:11,color:C.textDim,lineHeight:1.8,marginBottom:16}}>
-          <strong style={{color:C.text}}>Chrome:</strong> tap 🔒 in address bar →<br/>
-          Site Settings → Location → Allow
+          Settings → Privacy & Security →<br/>
+          Location Services → Safari →<br/>
+          <strong style={{color:"#F5A623"}}>While Using App</strong><br/><br/>
+          <strong style={{color:C.text}}>Chrome:</strong><br/>
+          Tap 🔒 in address bar → Site Settings → Location → Allow
         </div>
         <button onClick={detect} style={{
-          background:"linear-gradient(135deg,"+acc+","+accB+")",
-          border:"none",borderRadius:10,padding:"11px 24px",cursor:"pointer",
-          fontWeight:700,fontSize:13,color:"#000",marginBottom:10}}>
+          background:"linear-gradient(135deg,"+acc+","+accB+")",border:"none",
+          borderRadius:10,padding:"12px 28px",cursor:"pointer",
+          fontWeight:700,fontSize:13,color:"#000"}}>
           ↻ Try Again
         </button>
       </div>
-
-      <div style={{fontSize:11,fontWeight:600,color:C.muted,textAlign:"center",
-        marginBottom:12,letterSpacing:"0.08em"}}>OR USE GOOGLE MAPS DIRECTLY</div>
+      <div style={{textAlign:"center",fontSize:11,color:C.muted,marginBottom:12,fontWeight:600}}>
+        OR OPEN DIRECTLY IN GOOGLE MAPS
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <button onClick={()=>searchOnMaps("metro")} style={{
+        <button onClick={()=>window.open("https://www.google.com/maps/search/metro+station+near+me/","_blank")} style={{
           background:"linear-gradient(135deg,#1A73E8,#4285F4)",border:"none",
-          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style={{fontSize:22,marginBottom:5}}>🚇</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#fff"}}>Nearest Metro</div>
+          borderRadius:12,padding:"16px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:26,marginBottom:6}}>🚇</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>Nearest Metro</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",marginTop:2}}>via Google Maps</div>
         </button>
-        <button onClick={()=>searchOnMaps("bus")} style={{
+        <button onClick={openBus} style={{
           background:"linear-gradient(135deg,#1A73E8,#4285F4)",border:"none",
-          borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style={{fontSize:22,marginBottom:5}}>🚌</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#fff"}}>Nearest Bus</div>
+          borderRadius:12,padding:"16px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:26,marginBottom:6}}>🚌</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>Nearest Bus</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",marginTop:2}}>via Google Maps</div>
         </button>
       </div>
     </div>
   );
 
-  // ── RESULTS STATE ───────────────────────────────────────────────────────────
-  return (
+  // ── TRANSIT PICKER — user chooses metro or bus ─────────────────────────────
+  if(step === "transit") return (
     <div>
-      {/* Location confirmed */}
-      <div style={{display:"flex",alignItems:"center",gap:10,
-        background:"rgba(0,212,170,0.08)",border:"1px solid rgba(0,212,170,0.25)",
-        borderRadius:11,padding:"10px 13px",marginBottom:14}}>
-        <span style={{fontSize:18}}>📍</span>
+      {/* Location confirmed — clickable coordinates */}
+      <a href={coordsUrl} target="_blank" rel="noopener noreferrer" style={{
+        display:"flex",alignItems:"center",gap:10,
+        background:"rgba(0,212,170,0.09)",border:"1px solid rgba(0,212,170,0.3)",
+        borderRadius:12,padding:"12px 14px",marginBottom:20,textDecoration:"none",
+        cursor:"pointer"}}>
+        <span style={{fontSize:20}}>📍</span>
         <div style={{flex:1}}>
-          <div style={{fontSize:10,color:C.emerald,fontWeight:600,letterSpacing:"0.06em"}}>LOCATION FOUND</div>
-          <div style={{fontSize:10,color:C.muted,marginTop:1}}>
-            {navLoc.lat.toFixed(5)}, {navLoc.lng.toFixed(5)}
+          <div style={{fontSize:10,color:C.emerald,fontWeight:700,letterSpacing:"0.06em",marginBottom:3}}>
+            LOCATION FOUND — tap to verify on Google Maps
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:C.text,fontWeight:600}}>
+            {navLoc.lat.toFixed(6)}, {navLoc.lng.toFixed(6)}
           </div>
         </div>
-        <button onClick={()=>{setStep("idle");setNearest([]);setSelected(null);}} style={{
-          background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,
-          borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:10,color:C.muted}}>
-          Reset
+        <div style={{fontSize:18,color:C.emerald}}>↗</div>
+      </a>
+
+      <div style={{fontSize:13,color:C.textDim,textAlign:"center",marginBottom:16,lineHeight:1.6}}>
+        What are you looking for?
+      </div>
+
+      {/* Metro button */}
+      {stations.length > 0 ? (
+        <button onClick={pickMetro} style={{
+          width:"100%",
+          background:"linear-gradient(135deg,"+acc+"18,"+accB+"0C)",
+          border:"2px solid "+acc+"55",
+          borderRadius:16,padding:"20px 16px",cursor:"pointer",
+          marginBottom:12,display:"flex",alignItems:"center",gap:14,textAlign:"left"}}>
+          <div style={{width:52,height:52,borderRadius:12,flexShrink:0,
+            background:"linear-gradient(135deg,"+acc+","+accB+")",
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>
+            🚇
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:15,color:C.text,marginBottom:4}}>
+              Metro Station
+            </div>
+            <div style={{fontSize:11,color:C.muted,lineHeight:1.5}}>
+              {stations.length} stations in {city.name} database · sorted nearest first
+            </div>
+          </div>
+          <div style={{fontSize:20,color:acc,marginLeft:"auto",flexShrink:0}}>›</div>
+        </button>
+      ) : (
+        <button onClick={()=>window.open("https://www.google.com/maps/search/metro+station+near+me/","_blank")} style={{
+          width:"100%",background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+          border:"none",borderRadius:16,padding:"20px 16px",cursor:"pointer",
+          marginBottom:12,display:"flex",alignItems:"center",gap:14,textAlign:"left"}}>
+          <div style={{width:52,height:52,borderRadius:12,flexShrink:0,
+            background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>
+            🚇
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:4}}>Metro Station</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>Opens Google Maps near your location</div>
+          </div>
+          <div style={{fontSize:20,color:"rgba(255,255,255,0.7)",marginLeft:"auto",flexShrink:0}}>↗</div>
+        </button>
+      )}
+
+      {/* Bus button */}
+      <button onClick={openBus} style={{
+        width:"100%",
+        background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+        border:"none",borderRadius:16,padding:"20px 16px",cursor:"pointer",
+        display:"flex",alignItems:"center",gap:14,textAlign:"left"}}>
+        <div style={{width:52,height:52,borderRadius:12,flexShrink:0,
+          background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>
+          🚌
+        </div>
+        <div>
+          <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:4}}>Bus Stand</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>Opens Google Maps — shows all nearby bus stops</div>
+        </div>
+        <div style={{fontSize:20,color:"rgba(255,255,255,0.7)",marginLeft:"auto",flexShrink:0}}>↗</div>
+      </button>
+
+      <div style={{marginTop:14,textAlign:"center"}}>
+        <button onClick={()=>{setStep("idle");setNavLoc(null);}} style={{
+          background:"transparent",border:"none",cursor:"pointer",
+          fontSize:11,color:C.muted,textDecoration:"underline"}}>
+          ← Detect location again
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── RESULTS — station list sorted nearest first ───────────────────────────
+  return (
+    <div>
+      {/* Location — clickable */}
+      <a href={coordsUrl} target="_blank" rel="noopener noreferrer" style={{
+        display:"flex",alignItems:"center",gap:9,
+        background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.2)",
+        borderRadius:10,padding:"9px 12px",marginBottom:12,textDecoration:"none"}}>
+        <span style={{fontSize:14}}>📍</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:9,color:C.emerald,fontWeight:600,letterSpacing:"0.06em"}}>YOUR LOCATION · tap to verify</div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.text}}>{navLoc.lat.toFixed(6)}, {navLoc.lng.toFixed(6)}</div>
+        </div>
+        <div style={{fontSize:14,color:C.emerald}}>↗</div>
+      </a>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>
+          🚇 METRO STATIONS — NEAREST FIRST
+        </div>
+        <button onClick={()=>setStep("transit")} style={{
+          background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,
+          borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:10,color:C.muted}}>
+          ← Back
         </button>
       </div>
 
-      {/* Nearest stations */}
-      {nearest.length > 0 && (
-        <div>
-          <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>
-            🚇 {nearest.length} NEAREST METRO STATIONS · REAL ROAD DISTANCES
-          </div>
+      {/* Station list */}
+      {nearest.map(function(s, i) {
+        var isFirst = i === 0;
+        return (
+          <div key={i} style={{
+            background: isFirst
+              ? "linear-gradient(135deg,"+acc+"14,"+accB+"0A)"
+              : i < 3 ? "rgba(255,255,255,0.04)" : C.surface,
+            border: "1px solid "+(isFirst ? acc+"44" : C.border),
+            borderRadius:12,padding:"13px 14px",marginBottom:8}}>
 
-          {nearest.map(function(s, i) {
-            var isSelected = selected && selected.n === s.n;
-            var isFirst = i === 0;
-            return (
-              <div key={i}
-                onClick={()=>setSelected(isSelected ? null : s)}
-                style={{
-                  background: isSelected
-                    ? "linear-gradient(135deg,"+acc+"18,"+accB+"0E)"
-                    : isFirst ? "rgba(255,255,255,0.04)" : C.surface,
-                  border: "1px solid "+(isSelected ? acc+"55" : isFirst ? acc+"22" : C.border),
-                  borderRadius:14,padding:"14px",marginBottom:10,
-                  cursor:"pointer",transition:"all 0.2s"}}>
-
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  {/* Rank */}
-                  <div style={{width:36,height:36,borderRadius:10,flexShrink:0,
-                    background: isFirst
-                      ? "linear-gradient(135deg,"+acc+","+accB+")"
-                      : "rgba(255,255,255,0.08)",
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    fontWeight:700,fontSize:15,
-                    color: isFirst ? "#000" : C.muted}}>
-                    {isFirst ? "★" : i+1}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.n}</div>
-                    <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.line}</div>
-                  </div>
-
-                  {/* Road distance */}
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      fontSize:18,color:isFirst ? acc : C.text}}>{s.roadKm}</div>
-                    <div style={{fontSize:9,color:C.muted}}>km by road</div>
-                  </div>
-                </div>
-
-                {/* OSRM real times */}
-                <div style={{display:"flex",gap:8,marginTop:10}}>
-                  <div style={{flex:1,background:"rgba(0,212,170,0.08)",
-                    border:"1px solid rgba(0,212,170,0.2)",
-                    borderRadius:9,padding:"8px",textAlign:"center"}}>
-                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚶 WALKING</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      fontSize:18,color:C.emerald}}>{s.walkMins}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
-                    <div style={{fontSize:8,color:C.emerald,marginTop:1,opacity:0.7}}>via footpath</div>
-                  </div>
-                  <div style={{flex:1,background:"rgba(79,195,247,0.08)",
-                    border:"1px solid rgba(79,195,247,0.2)",
-                    borderRadius:9,padding:"8px",textAlign:"center"}}>
-                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚗 CAB/AUTO</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      fontSize:18,color:C.sky}}>{s.driveMins || "—"}<span style={{fontSize:10,fontWeight:400}}>{s.driveMins?" min":""}</span></div>
-                    <div style={{fontSize:8,color:C.sky,marginTop:1,opacity:0.7}}>{s.driveKm ? s.driveKm+" km by road" : ""}</div>
-                  </div>
-                </div>
-                <div style={{fontSize:8,color:C.muted,textAlign:"center",marginTop:4}}>
-                  Road distances &amp; times via OpenStreetMap routing
-                </div>
-
-                {/* Navigation buttons */}
-                {isSelected && (
-                  <div style={{marginTop:10,display:"flex",gap:8,animation:"fadeIn 0.2s ease"}}>
-                    <button onClick={function(e){e.stopPropagation();navigate(s,"walk");}} style={{
-                      flex:1,background:"rgba(0,212,170,0.12)",
-                      border:"1px solid rgba(0,212,170,0.35)",
-                      borderRadius:10,padding:"11px 8px",cursor:"pointer",
-                      display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-                      fontWeight:700,fontSize:13,color:C.emerald}}>
-                      🚶 Walk Route
-                    </button>
-                    <button onClick={function(e){e.stopPropagation();navigate(s,"cab");}} style={{
-                      flex:1,background:"linear-gradient(135deg,#1A73E8,#4285F4)",
-                      border:"none",borderRadius:10,padding:"11px 8px",cursor:"pointer",
-                      display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-                      fontWeight:700,fontSize:13,color:"#fff",
-                      boxShadow:"0 3px 12px rgba(26,115,232,0.4)"}}>
-                      🗺️ Drive Route
-                    </button>
-                  </div>
-                )}
-                {!isSelected && (
-                  <div style={{marginTop:8,display:"flex",gap:8}}>
-                    <button onClick={function(e){e.stopPropagation();navigate(s,"walk");}} style={{
-                      flex:1,background:"rgba(0,212,170,0.08)",
-                      border:"1px solid rgba(0,212,170,0.2)",
-                      borderRadius:8,padding:"8px",cursor:"pointer",
-                      display:"flex",alignItems:"center",justifyContent:"center",gap:5,
-                      fontSize:11,color:C.emerald,fontWeight:600}}>
-                      🚶 Walk
-                    </button>
-                    <button onClick={function(e){e.stopPropagation();navigate(s,"cab");}} style={{
-                      flex:1,background:"rgba(26,115,232,0.15)",
-                      border:"1px solid rgba(26,115,232,0.3)",
-                      borderRadius:8,padding:"8px",cursor:"pointer",
-                      display:"flex",alignItems:"center",justifyContent:"center",gap:5,
-                      fontSize:11,color:"#5BA4E8",fontWeight:600}}>
-                      🗺️ Drive
-                    </button>
-                  </div>
-                )}
+            {/* Station name row */}
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <div style={{width:28,height:28,borderRadius:7,flexShrink:0,
+                background: isFirst
+                  ? "linear-gradient(135deg,"+acc+","+accB+")"
+                  : "rgba(255,255,255,0.09)",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontWeight:700,fontSize:12,
+                color: isFirst ? "#000" : C.muted}}>
+                {isFirst ? "★" : i+1}
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.n}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:1}}>{s.line}</div>
+              </div>
+            </div>
 
-      {/* Bus stand search */}
-      <div style={{background:C.surface,border:"1px solid "+C.border,
-        borderRadius:13,padding:"13px",marginTop:6}}>
-        <div style={{fontSize:11,fontWeight:600,color:C.text,marginBottom:10}}>
-          🚌 Find Nearest Bus Stand
-        </div>
-        <div style={{fontSize:11,color:C.textDim,lineHeight:1.6,marginBottom:12}}>
-          Bus stand locations come from Google Maps — tap below to see all nearby bus stops on the map with live routes.
-        </div>
-        <button onClick={()=>searchOnMaps("bus")} style={{
-          width:"100%",background:"linear-gradient(135deg,#1A73E8,#4285F4)",
-          border:"none",borderRadius:10,padding:"11px",cursor:"pointer",
-          fontWeight:700,fontSize:13,color:"#fff",
-          display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-          boxShadow:"0 3px 12px rgba(26,115,232,0.35)"}}>
-          🗺️ Show Nearest Bus Stands on Google Maps
-        </button>
+            {/* Navigate buttons */}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){openWalk(s);}} style={{
+                flex:1,
+                background:"rgba(0,212,170,0.10)",
+                border:"1px solid rgba(0,212,170,0.3)",
+                borderRadius:9,padding:"10px 6px",cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",gap:5,
+                fontWeight:700,fontSize:12,color:C.emerald}}>
+                🚶 Walk Route
+              </button>
+              <button onClick={function(){openDrive(s);}} style={{
+                flex:1,
+                background:"linear-gradient(135deg,#1A73E8,#4285F4)",
+                border:"none",borderRadius:9,padding:"10px 6px",cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",gap:5,
+                fontWeight:700,fontSize:12,color:"#fff",
+                boxShadow:"0 2px 8px rgba(26,115,232,0.35)"}}>
+                🗺️ Drive Route
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      <div style={{fontSize:9,color:C.muted,textAlign:"center",marginTop:10,lineHeight:1.6}}>
+        Order based on straight-line distance · Google Maps shows exact road time &amp; route
       </div>
     </div>
   );
