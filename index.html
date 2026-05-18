@@ -1134,21 +1134,29 @@ async function fetchAIRoutes(city, from, to, apiKey, onTokenUpdate, onModelChang
     return { routes: cached.routes, fromCache: true, cacheAge: cacheAge(cached), tokensSaved: cached.tokens };
   }
 
+  const cleanFrom = from.replace(/^📍\s*/,"").trim();
+
   const prompt = `You are a transit expert for ${city.name}, ${city.country}. Transit system: ${city.transitLabel}. Currency: ${city.currency}.
 
-Generate 5 distinct multi-modal routes from "${from}" to "${to}".
+Generate 6 distinct routes from "${cleanFrom}" to "${to}", covering ALL available transit modes.
+
+MANDATORY MODES TO INCLUDE (where they exist):
+1. Metro route — walk from origin to nearest actual metro station → metro → walk to destination
+2. Metro + auto/cab feeder — auto/cab to metro station → metro → walk
+3. Direct bus — all bus numbers serving this corridor with real stop names
+4. Auto-rickshaw direct
+5. Cab/taxi direct
+6. Walk or cycle (if under 5 km)
 
 CRITICAL RULES:
-1. NEVER use "${from}" as a metro station or bus stand name unless it is literally a station/stand. Always find the ACTUAL nearest transit point to "${from}" using your geographic knowledge of ${city.name}.
-2. Metro routes MUST follow this exact step format in "via": "Walk to [ACTUAL Nearest Metro Station e.g. Raidurg] → [Line Name e.g. Red Line] towards [Terminal e.g. Nagole] → Alight at [Nearest Station to ${to}] → Walk to ${to}"
-3. Bus routes MUST: (a) name the ACTUAL nearest bus stand to "${from}" (e.g. Nanakramguda Bus Stand, not "${from} Bus Stand"), and (b) list ALL bus numbers that serve this corridor (e.g. Bus 5K, 216K, 219K — never just one number).
-4. Use REAL station names, real bus numbers, real stop names as they exist in ${city.name} today.
-5. "via" must be a clear turn-by-turn string a traveller can follow on the ground.
+- NEVER use "${cleanFrom}" as a metro/bus station name. Find the ACTUAL nearest transit point using your geographic knowledge.
+- Metro "via": "Walk to [Real Station] → [Line] towards [Terminal] → Alight at [Real Station near ${to}] → Walk to ${to}"
+- Bus "via": "[Real Nearest Bus Stand Name] → Bus [ALL bus numbers on this route e.g. 5K, 216K, 219K] → [Key stop] → Walk to ${to}"
+- Use REAL station names, real bus numbers, real stop names in ${city.name}.
+- "via" must read like step-by-step navigation the traveller can follow on the ground.
 
-Return a raw JSON array only, no markdown, no extra text.
-Each item: {"id":"str","icon":"emoji","label":"Mode Name","via":"full step-by-step route","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"one practical tip"}
-
-Include these modes where applicable: Metro, Bus (all bus numbers), Auto-rickshaw, Cab, Walking.`;
+Return raw JSON array only, no markdown.
+Each: {"id":"str","icon":"emoji","label":"Mode Name","via":"full step-by-step route","time":int,"fare":num,"crowd":int,"reliability":int,"delay":int,"co2":num,"tip":"practical tip"}`;
 
   const { res, model } = await callWithFallback(
     apiKey,
@@ -2348,6 +2356,12 @@ function TranzitApp(){
 
   const [from,    setFrom]    = useState("");
   const [to,      setTo]      = useState("");
+  const [fromSuggestions, setFromSuggestions] = useState([]);
+  const [toSuggestions,   setToSuggestions]   = useState([]);
+  const [fromFocused,     setFromFocused]     = useState(false);
+  const [toFocused,       setToFocused]       = useState(false);
+  const [gpsLoading,      setGpsLoading]      = useState(false);
+  const acDebounce = useRef({});
   const [editFrom,setEditFrom]=useState(false);
   const [editTo,  setEditTo]  =useState(false);
   const [routes,  setRoutes]  =useState([]);
@@ -2374,7 +2388,48 @@ function TranzitApp(){
 
   const fmtTime   =d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
   const fmtFare   =v=>(typeof v==="number"&&v%1!==0)?v.toFixed(2):String(Math.round(v));
-  const swap      =()=>{const t=from;setFrom(to);setTo(t);setRoutes([]);setSearched(false);};
+  const swap = ()=>{const t=from;setFrom(to);setTo(t);setRoutes([]);setSearched(false);};
+
+  // Nominatim address autocomplete
+  const fetchSuggestions = (query, field) => {
+    clearTimeout(acDebounce.current[field]);
+    if(query.length < 3) { field==="from"?setFromSuggestions([]):setToSuggestions([]); return; }
+    acDebounce.current[field] = setTimeout(async () => {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query+", "+city.name)}&format=json&limit=5&accept-language=en`;
+        const res = await fetch(url, {headers:{"User-Agent":"Tranzit-App/1.0"}, signal:makeSignal(4000)});
+        const data = await res.json();
+        const suggestions = data.map(d => d.display_name.split(",").slice(0,3).join(", "));
+        field==="from" ? setFromSuggestions(suggestions) : setToSuggestions(suggestions);
+      } catch(e) {}
+    }, 350);
+  };
+
+  // GPS → current location as origin
+  const useGPSAsFrom = async () => {
+    setGpsLoading(true);
+    try {
+      const pos = await new Promise((res,rej)=>{
+        if(!navigator.geolocation){rej();return;}
+        navigator.geolocation.getCurrentPosition(
+          p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
+          ()=>rej(), {timeout:7000,enableHighAccuracy:true,maximumAge:30000}
+        );
+      });
+      // Reverse geocode to get address
+      const url = `https://nominatim.openstreetmap.org/reverse?lat=${pos.lat}&lon=${pos.lng}&format=json&accept-language=en`;
+      const res = await fetch(url, {headers:{"User-Agent":"Tranzit-App/1.0"}, signal:makeSignal(5000)});
+      const data = await res.json();
+      const label = data.display_name
+        ? data.display_name.split(",").slice(0,2).join(", ")
+        : `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`;
+      setFrom("📍 "+label);
+      setRoutes([]); setSearched(false);
+    } catch(e) {
+      setFrom("📍 My current location");
+    }
+    setGpsLoading(false);
+  };
 
   // ── SOS HELPERS (need city to be defined first) ──────────────────────────
   const SOS_EMERGENCY = {
@@ -3010,18 +3065,86 @@ Respond ONLY with a valid JSON object. No markdown, no extra text.
         {activeTab==="plan"&&(
           <div>
             <div style={{background:C.surface,borderRadius:14,border:`1px solid ${C.border}`,padding:"13px 14px",marginBottom:10}}>
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.emerald}}>●</span>&nbsp; FROM</div>
-                {editFrom?(<input autoFocus value={from} onChange={e=>setFrom(e.target.value)} onBlur={()=>setEditFrom(false)} onKeyDown={e=>{if(e.key==="Enter")setEditFrom(false);}} placeholder={`e.g. ${city.defaultFrom}`} style={inp}/>):(<div onClick={()=>setEditFrom(true)} style={{display:"flex",alignItems:"center",gap:8,cursor:"text",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:"rgba(255,255,255,0.02)"}}><span style={{fontSize:13,fontWeight:600,flex:1,color:from?C.text:C.muted}}>{from||"Tap to enter origin…"}</span><span style={{fontSize:12,color:C.muted}}>✏️</span></div>)}
+
+              {/* FROM field */}
+              <div style={{marginBottom:10,position:"relative"}}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}>
+                  <span style={{color:C.emerald}}>●</span>&nbsp; FROM
+                </div>
+                <div style={{display:"flex",gap:7}}>
+                  <input
+                    value={from}
+                    onChange={e=>{setFrom(e.target.value);fetchSuggestions(e.target.value,"from");setRoutes([]);setSearched(false);}}
+                    onFocus={()=>setFromFocused(true)}
+                    onBlur={()=>setTimeout(()=>setFromFocused(false),200)}
+                    placeholder={`e.g. ${city.defaultFrom}, any address…`}
+                    style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,borderRadius:9,
+                      padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  <button onClick={useGPSAsFrom} disabled={gpsLoading}
+                    title="Use my current location"
+                    style={{flexShrink:0,background:from.startsWith("📍")?`${C.emerald}22`:`${acc}18`,
+                      border:`1px solid ${from.startsWith("📍")?C.emerald:acc+"55"}`,
+                      borderRadius:9,padding:"0 12px",cursor:"pointer",fontSize:16,
+                      color:from.startsWith("📍")?C.emerald:acc}}>
+                    {gpsLoading?"⏳":"📍"}
+                  </button>
+                </div>
+                {/* FROM autocomplete dropdown */}
+                {fromFocused && fromSuggestions.length>0 && (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,
+                    background:"#1A1A28",border:`1px solid ${acc}44`,borderRadius:10,
+                    overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
+                    {fromSuggestions.map((s,i)=>(
+                      <div key={i} onMouseDown={()=>{setFrom(s);setFromSuggestions([]);setRoutes([]);setSearched(false);}}
+                        style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",
+                          borderBottom:i<fromSuggestions.length-1?`1px solid ${C.border}`:"none",
+                          display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:13,color:C.muted}}>📍</span>
+                        <span>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Swap button */}
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                 <div style={{flex:1,height:1,background:C.border}}/>
-                <button onClick={swap} style={{background:`${acc}22`,border:`1px solid ${acc}55`,borderRadius:"50%",width:30,height:30,cursor:"pointer",color:acc,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>⇄</button>
+                <button onClick={swap} style={{background:`${acc}22`,border:`1px solid ${acc}55`,
+                  borderRadius:"50%",width:30,height:30,cursor:"pointer",color:acc,fontSize:15,
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>⇄</button>
                 <div style={{flex:1,height:1,background:C.border}}/>
               </div>
-              <div>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.crimson}}>●</span>&nbsp; TO</div>
-                {editTo?(<input autoFocus value={to} onChange={e=>setTo(e.target.value)} onBlur={()=>setEditTo(false)} onKeyDown={e=>{if(e.key==="Enter")setEditTo(false);}} placeholder={`e.g. ${city.defaultTo}`} style={inp}/>):(<div onClick={()=>setEditTo(true)} style={{display:"flex",alignItems:"center",gap:8,cursor:"text",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:"rgba(255,255,255,0.02)"}}><span style={{fontSize:13,fontWeight:600,flex:1,color:to?C.text:C.muted}}>{to||"Tap to enter destination…"}</span><span style={{fontSize:12,color:C.muted}}>✏️</span></div>)}
+
+              {/* TO field */}
+              <div style={{position:"relative"}}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}>
+                  <span style={{color:C.crimson}}>●</span>&nbsp; TO
+                </div>
+                <input
+                  value={to}
+                  onChange={e=>{setTo(e.target.value);fetchSuggestions(e.target.value,"to");setRoutes([]);setSearched(false);}}
+                  onFocus={()=>setToFocused(true)}
+                  onBlur={()=>setTimeout(()=>setToFocused(false),200)}
+                  placeholder={`e.g. ${city.defaultTo}, any address…`}
+                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${acc}55`,borderRadius:9,
+                    padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                {/* TO autocomplete dropdown */}
+                {toFocused && toSuggestions.length>0 && (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,
+                    background:"#1A1A28",border:`1px solid ${acc}44`,borderRadius:10,
+                    overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
+                    {toSuggestions.map((s,i)=>(
+                      <div key={i} onMouseDown={()=>{setTo(s);setToSuggestions([]);setRoutes([]);setSearched(false);}}
+                        style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",
+                          borderBottom:i<toSuggestions.length-1?`1px solid ${C.border}`:"none",
+                          display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:13,color:C.muted}}>📍</span>
+                        <span>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
