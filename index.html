@@ -1552,14 +1552,13 @@ function NavigateTab({city, acc, accB}) {
   const [transit, setTransit] = useState("metro"); // metro | bus | all
 
   // Straight-line distance → realistic time estimates
-  // Straight-line × 1.4 road factor ÷ speed — still approximate
-  // Google Maps uses actual roads + traffic, so always verify there
-  const walkMin = km => Math.max(3, Math.round(km * 1.4 / 5 * 60));
-  const cabMin  = km => Math.max(2, Math.round(km * 1.4 / 20 * 60));
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   const detect = async () => {
     setStep("locating"); setNearest([]); setSelected(null); setNavLoc(null);
+    setLoadingProgress(0);
     try {
+      // Step 1: Get GPS
       const pos = await new Promise((res,rej) => {
         if(!navigator.geolocation){ rej(new Error("no_geo")); return; }
         navigator.geolocation.getCurrentPosition(
@@ -1569,16 +1568,59 @@ function NavigateTab({city, acc, accB}) {
         );
       });
       setNavLoc(pos);
-      // Sort all stations by true distance, take top 5
-      const sorted = stations
-        .map(s => ({...s, km: parseFloat(haversineKm(pos.lat, pos.lng, s.lat, s.lng).toFixed(2))}))
-        .sort((a,b) => a.km - b.km)
-        .slice(0, 5);
+      setLoadingProgress(10);
+
+      // Step 2: Pre-filter by straight-line to avoid calling OSRM for distant stations
+      const preFiltered = stations
+        .map(s => ({...s, slKm: parseFloat(haversineKm(pos.lat, pos.lng, s.lat, s.lng).toFixed(2))}))
+        .sort((a,b) => a.slKm - b.slKm)
+        .slice(0, 8); // top 8 by straight-line, then get real road distances for these
+
+      // Step 3: Fetch REAL road distances + walk times from OSRM for top 8
+      const results = [];
+      for(let i = 0; i < preFiltered.length; i++) {
+        const s = preFiltered[i];
+        try {
+          // Walking route
+          const walkUrl = "https://router.project-osrm.org/route/v1/foot/" +
+            pos.lng + "," + pos.lat + ";" + s.lng + "," + s.lat + "?overview=false";
+          const walkRes = await fetch(walkUrl, {signal: makeSignal(6000)});
+          const walkData = await walkRes.json();
+
+          // Driving route
+          const driveUrl = "https://router.project-osrm.org/route/v1/car/" +
+            pos.lng + "," + pos.lat + ";" + s.lng + "," + s.lat + "?overview=false";
+          const driveRes = await fetch(driveUrl, {signal: makeSignal(6000)});
+          const driveData = await driveRes.json();
+
+          if(walkData.code === "Ok" && walkData.routes[0]) {
+            const walkRoute = walkData.routes[0];
+            const driveRoute = (driveData.code === "Ok" && driveData.routes[0]) ? driveData.routes[0] : null;
+            results.push({
+              ...s,
+              roadKm:   parseFloat((walkRoute.distance / 1000).toFixed(1)),
+              walkMins: Math.ceil(walkRoute.duration / 60),
+              driveMins: driveRoute ? Math.ceil(driveRoute.duration / 60) : null,
+              driveKm:   driveRoute ? parseFloat((driveRoute.distance / 1000).toFixed(1)) : null,
+            });
+          } else {
+            // OSRM failed for this station — keep with straight-line fallback
+            results.push({...s, roadKm: s.slKm, walkMins: Math.round(s.slKm*1.4/5*60), driveMins: Math.round(s.slKm*1.4/20*60), driveKm: s.slKm});
+          }
+        } catch(e) {
+          results.push({...s, roadKm: s.slKm, walkMins: Math.round(s.slKm*1.4/5*60), driveMins: Math.round(s.slKm*1.4/20*60), driveKm: s.slKm});
+        }
+        setLoadingProgress(10 + Math.round((i+1)/preFiltered.length * 88));
+      }
+
+      // Sort by actual road walk distance, take top 5
+      const sorted = results.sort((a,b) => a.roadKm - b.roadKm).slice(0,5);
       setNearest(sorted);
       setStep("results");
     } catch(e) {
       setStep("error");
     }
+    setLoadingProgress(100);
   };
 
   const navigate = (station, mode) => {
@@ -1647,11 +1689,22 @@ function NavigateTab({city, acc, accB}) {
 
   // ── LOCATING STATE ──────────────────────────────────────────────────────────
   if(step === "locating") return (
-    <div style={{textAlign:"center",padding:"60px 20px"}}>
+    <div style={{textAlign:"center",padding:"50px 20px"}}>
       <div style={{fontSize:42,animation:"pulse 1s ease-in-out infinite",marginBottom:16}}>📍</div>
       <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.1em",
         color:acc,marginBottom:8}}>FINDING YOUR LOCATION</div>
-      <div style={{fontSize:12,color:C.muted}}>Getting GPS and finding nearest stations…</div>
+      <div style={{fontSize:12,color:C.muted,marginBottom:20}}>
+        {loadingProgress < 10 ? "Getting GPS…" :
+         loadingProgress < 95 ? "Calculating real road distances to each station via OpenStreetMap…" :
+         "Almost done…"}
+      </div>
+      {/* Progress bar */}
+      <div style={{background:"rgba(255,255,255,0.08)",borderRadius:6,height:6,margin:"0 20px"}}>
+        <div style={{height:"100%",borderRadius:6,
+          background:"linear-gradient(90deg,"+acc+","+accB+")",
+          width:loadingProgress+"%",transition:"width 0.4s ease"}}/>
+      </div>
+      <div style={{fontSize:10,color:C.muted,marginTop:8}}>{loadingProgress}%</div>
     </div>
   );
 
@@ -1723,7 +1776,7 @@ function NavigateTab({city, acc, accB}) {
       {nearest.length > 0 && (
         <div>
           <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10}}>
-            🚇 {nearest.length} NEAREST METRO STATIONS IN {city.name.toUpperCase()}
+            🚇 {nearest.length} NEAREST METRO STATIONS · REAL ROAD DISTANCES
           </div>
 
           {nearest.map(function(s, i) {
@@ -1758,34 +1811,35 @@ function NavigateTab({city, acc, accB}) {
                     <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.line}</div>
                   </div>
 
-                  {/* Distance */}
+                  {/* Road distance */}
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      fontSize:18,color:isFirst ? acc : C.text}}>{s.km}</div>
-                    <div style={{fontSize:9,color:C.muted}}>km away</div>
+                      fontSize:18,color:isFirst ? acc : C.text}}>{s.roadKm}</div>
+                    <div style={{fontSize:9,color:C.muted}}>km by road</div>
                   </div>
                 </div>
 
-                {/* Time estimates with clear disclaimer */}
+                {/* OSRM real times */}
                 <div style={{display:"flex",gap:8,marginTop:10}}>
                   <div style={{flex:1,background:"rgba(0,212,170,0.08)",
                     border:"1px solid rgba(0,212,170,0.2)",
-                    borderRadius:9,padding:"7px",textAlign:"center"}}>
-                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚶 EST. WALK</div>
+                    borderRadius:9,padding:"8px",textAlign:"center"}}>
+                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚶 WALKING</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      fontSize:16,color:C.emerald}}>~{walkMin(s.km)}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
+                      fontSize:18,color:C.emerald}}>{s.walkMins}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
+                    <div style={{fontSize:8,color:C.emerald,marginTop:1,opacity:0.7}}>via footpath</div>
                   </div>
                   <div style={{flex:1,background:"rgba(79,195,247,0.08)",
                     border:"1px solid rgba(79,195,247,0.2)",
-                    borderRadius:9,padding:"7px",textAlign:"center"}}>
-                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚗 EST. CAB</div>
+                    borderRadius:9,padding:"8px",textAlign:"center"}}>
+                    <div style={{fontSize:8,color:C.muted,letterSpacing:"0.08em",marginBottom:2}}>🚗 CAB/AUTO</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,
-                      fontSize:16,color:C.sky}}>~{cabMin(s.km)}<span style={{fontSize:10,fontWeight:400}}> min</span></div>
+                      fontSize:18,color:C.sky}}>{s.driveMins || "—"}<span style={{fontSize:10,fontWeight:400}}>{s.driveMins?" min":""}</span></div>
+                    <div style={{fontSize:8,color:C.sky,marginTop:1,opacity:0.7}}>{s.driveKm ? s.driveKm+" km by road" : ""}</div>
                   </div>
                 </div>
-                <div style={{fontSize:8,color:C.muted,textAlign:"center",marginTop:5,
-                  lineHeight:1.5}}>
-                  ⚠️ Estimated · actual time on Google Maps may differ due to roads &amp; traffic
+                <div style={{fontSize:8,color:C.muted,textAlign:"center",marginTop:4}}>
+                  Road distances &amp; times via OpenStreetMap routing
                 </div>
 
                 {/* Navigation buttons */}
