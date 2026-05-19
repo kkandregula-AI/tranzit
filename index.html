@@ -1094,7 +1094,194 @@ async function nominatimSearch(q,cityName){
   return d.map(x=>x.display_name.split(",").slice(0,3).join(", "));
 }
 
-// ─── TfL REAL-TIME (London only — browser accessible, no backend needed) ──────
+// ─── WORLD CITIES (40+ countries for custom city adding) ─────────────────────
+const WORLD_CITIES = {
+  // ── ASIA ──
+  "Bangalore":    {country:"India",      currency:"₹", transitLabel:"BMRCL Metro / BMTC",  tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"MG Road", defaultTo:"Whitefield"},
+  "Chennai":      {country:"India",      currency:"₹", transitLabel:"Chennai Metro / MTC",  tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"T Nagar", defaultTo:"Airport"},
+  "Kolkata":      {country:"India",      currency:"₹", transitLabel:"Kolkata Metro / CSTC", tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"Park Street", defaultTo:"Howrah"},
+  "Pune":         {country:"India",      currency:"₹", transitLabel:"Pune Metro / PMPML",   tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"Shivajinagar", defaultTo:"Hinjewadi"},
+  "Ahmedabad":    {country:"India",      currency:"₹", transitLabel:"AMTS / BRTS",          tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"Maninagar", defaultTo:"GIFT City"},
+  "Jaipur":       {country:"India",      currency:"₹", transitLabel:"Jaipur Metro / RSRTC", tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"MI Road", defaultTo:"Mansarovar"},
+  "Kochi":        {country:"India",      currency:"₹", transitLabel:"Kochi Metro / KSRTC",  tz:"Asia/Kolkata",    flag:"🇮🇳", defaultFrom:"Ernakulam", defaultTo:"Airport"},
+  "Beijing":      {country:"China",      currency:"¥", transitLabel:"Beijing Subway / BRT", tz:"Asia/Shanghai",   flag:"🇨🇳", defaultFrom:"Tiananmen", defaultTo:"Sanlitun"},
+  "Shanghai":     {country:"China",      currency:"¥", transitLabel:"Shanghai Metro",       tz:"Asia/Shanghai",   flag:"🇨🇳", defaultFrom:"The Bund", defaultTo:"Pudong"},
+  "Guangzhou":    {country:"China",      currency:"¥", transitLabel:"Guangzhou Metro",      tz:"Asia/Shanghai",   flag:"🇨🇳", defaultFrom:"Tianhe", defaultTo:"Baiyun Airport"},
+  "Shenzhen":     {country:"China",      currency:"¥", transitLabel:"Shenzhen Metro",       tz:"Asia/Shanghai",   flag:"🇨🇳", defaultFrom:"Futian", defaultTo:"Nanshan"},
+  "Hong Kong":    {country:"Hong Kong",  currency:"HK$",transitLabel:"MTR",                 tz:"Asia/Hong_Kong",  flag:"🇭🇰", defaultFrom:"Central", defaultTo:"Tsim Sha Tsui"},
+  "Seoul":        {country:"South Korea",currency:"₩", transitLabel:"Seoul Metro / Korail", tz:"Asia/Seoul",      flag:"🇰🇷", defaultFrom:"Gangnam", defaultTo:"Myeongdong"},
+  "Busan":        {country:"South Korea",currency:"₩", transitLabel:"Busan Metro",          tz:"Asia/Seoul",      flag:"🇰🇷", defaultFrom:"Seomyeon", defaultTo:"Haeundae"},
+  "Osaka":        {country:"Japan",      currency:"¥", transitLabel:"Osaka Metro / JR",     tz:"Asia/Tokyo",      flag:"🇯🇵", defaultFrom:"Namba", defaultTo:"Osaka Station"},
+  "Taipei":       {country:"Taiwan",     currency:"NT$",transitLabel:"TRTS / MRT",           tz:"Asia/Taipei",     flag:"🇹🇼", defaultFrom:"Taipei 101", defaultTo:"Ximending"},
+  "Bangkok":      {country:"Thailand",   currency:"฿", transitLabel:"BTS Skytrain / MRT",   tz:"Asia/Bangkok",    flag:"🇹🇭", defaultFrom:"Sukhumvit", defaultTo:"Siam"},
+  "Jakarta":      {country:"Indonesia",  currency:"Rp",transitLabel:"TransJakarta / MRT",   tz:"Asia/Jakarta",    flag:"🇮🇩", defaultFrom:"Sudirman", defaultTo:"Blok M"},
+  "Kuala Lumpur": {country:"Malaysia",   currency:"RM",transitLabel:"RapidKL / MRT",         tz:"Asia/Kuala_Lumpur",flag:"🇲🇾",defaultFrom:"KLCC",    defaultTo:"Bukit Bintang"},
+  "Manila":       {country:"Philippines",currency:"₱", transitLabel:"MRT / LRT",            tz:"Asia/Manila",     flag:"🇵🇭", defaultFrom:"BGC",     defaultTo:"Makati"},
+  "Ho Chi Minh":  {country:"Vietnam",    currency:"₫", transitLabel:"Metro Line 1",         tz:"Asia/Ho_Chi_Minh",flag:"🇻🇳", defaultFrom:"District 1", defaultTo:"Thu Duc"},
+  "Karachi":      {country:"Pakistan",   currency:"Rs",transitLabel:"Karachi Bus Rapid Transit",tz:"Asia/Karachi", flag:"🇵🇰", defaultFrom:"Saddar",  defaultTo:"Clifton"},
+  "Lahore":       {country:"Pakistan",   currency:"Rs",transitLabel:"Lahore Metro / Orange Line",tz:"Asia/Karachi",flag:"🇵🇰", defaultFrom:"Gulberg", defaultTo:"Liberty"},
+  "Dhaka":        {country:"Bangladesh", currency:"৳", transitLabel:"BRTA / MRT Line 6",    tz:"Asia/Dhaka",      flag:"🇧🇩", defaultFrom:"Motijheel", defaultTo:"Uttara"},
+  "Colombo":      {country:"Sri Lanka",  currency:"Rs",transitLabel:"Sri Lanka Railways",    tz:"Asia/Colombo",    flag:"🇱🇰", defaultFrom:"Fort",    defaultTo:"Nugegoda"},
+  "Kathmandu":    {country:"Nepal",      currency:"Rs",transitLabel:"Nepal Airlines Bus",    tz:"Asia/Kathmandu",  flag:"🇳🇵", defaultFrom:"Thamel",  defaultTo:"Airport"},
+  "Riyadh":       {country:"Saudi Arabia",currency:"SR",transitLabel:"Riyadh Metro",        tz:"Asia/Riyadh",     flag:"🇸🇦", defaultFrom:"King Fahd Rd", defaultTo:"Olaya"},
+  "Doha":         {country:"Qatar",      currency:"QR",transitLabel:"Qatar Rail / Mowasalat",tz:"Asia/Qatar",     flag:"🇶🇦", defaultFrom:"Corniche", defaultTo:"Lusail"},
+  "Muscat":       {country:"Oman",       currency:"OMR",transitLabel:"ONSOR Bus",            tz:"Asia/Muscat",     flag:"🇴🇲", defaultFrom:"Ruwi",    defaultTo:"Qurum"},
+  "Colombo":      {country:"Sri Lanka",  currency:"Rs",transitLabel:"CTB / Train",           tz:"Asia/Colombo",    flag:"🇱🇰", defaultFrom:"Fort",    defaultTo:"Nugegoda"},
+  "Tel Aviv":     {country:"Israel",     currency:"₪", transitLabel:"Tel Aviv Light Rail",   tz:"Asia/Jerusalem",  flag:"🇮🇱", defaultFrom:"Dizengoff", defaultTo:"Jaffa"},
+  "Istanbul":     {country:"Turkey",     currency:"₺", transitLabel:"Istanbul Metro / IETT", tz:"Europe/Istanbul", flag:"🇹🇷", defaultFrom:"Taksim",  defaultTo:"Kadikoy"},
+  // ── EUROPE ──
+  "Paris":        {country:"France",     currency:"€", transitLabel:"Paris Métro / RER",     tz:"Europe/Paris",    flag:"🇫🇷", defaultFrom:"Champs-Élysées", defaultTo:"Montmartre"},
+  "Berlin":       {country:"Germany",    currency:"€", transitLabel:"BVG U-Bahn / S-Bahn",  tz:"Europe/Berlin",   flag:"🇩🇪", defaultFrom:"Alexanderplatz", defaultTo:"Potsdamer Platz"},
+  "Madrid":       {country:"Spain",      currency:"€", transitLabel:"Metro de Madrid",       tz:"Europe/Madrid",   flag:"🇪🇸", defaultFrom:"Gran Vía",defaultTo:"Retiro"},
+  "Barcelona":    {country:"Spain",      currency:"€", transitLabel:"TMB Metro",             tz:"Europe/Madrid",   flag:"🇪🇸", defaultFrom:"Las Ramblas", defaultTo:"Sagrada Familia"},
+  "Amsterdam":    {country:"Netherlands",currency:"€", transitLabel:"GVB Metro / Tram",      tz:"Europe/Amsterdam",flag:"🇳🇱", defaultFrom:"Centraal", defaultTo:"Leidseplein"},
+  "Rome":         {country:"Italy",      currency:"€", transitLabel:"Roma Metro / ATAC",     tz:"Europe/Rome",     flag:"🇮🇹", defaultFrom:"Termini",  defaultTo:"Vatican"},
+  "Milan":        {country:"Italy",      currency:"€", transitLabel:"ATM Metro",             tz:"Europe/Rome",     flag:"🇮🇹", defaultFrom:"Duomo",    defaultTo:"Brera"},
+  "Vienna":       {country:"Austria",    currency:"€", transitLabel:"Wiener Linien U-Bahn",  tz:"Europe/Vienna",   flag:"🇦🇹", defaultFrom:"Stephansplatz", defaultTo:"Prater"},
+  "Zurich":       {country:"Switzerland",currency:"CHF",transitLabel:"ZVV Tram / S-Bahn",   tz:"Europe/Zurich",   flag:"🇨🇭", defaultFrom:"Hauptbahnhof", defaultTo:"Paradeplatz"},
+  "Stockholm":    {country:"Sweden",     currency:"kr",transitLabel:"Tunnelbana Metro",      tz:"Europe/Stockholm",flag:"🇸🇪", defaultFrom:"T-Centralen", defaultTo:"Södermalm"},
+  "Oslo":         {country:"Norway",     currency:"kr",transitLabel:"Oslo T-bane",           tz:"Europe/Oslo",     flag:"🇳🇴", defaultFrom:"Nationaltheatret", defaultTo:"Grünerløkka"},
+  "Copenhagen":   {country:"Denmark",    currency:"kr",transitLabel:"Copenhagen Metro",      tz:"Europe/Copenhagen",flag:"🇩🇰",defaultFrom:"Nørreport", defaultTo:"Christianshavn"},
+  "Brussels":     {country:"Belgium",    currency:"€", transitLabel:"STIB Metro",            tz:"Europe/Brussels", flag:"🇧🇪", defaultFrom:"Grand Place", defaultTo:"EU Quarter"},
+  "Prague":       {country:"Czech Republic",currency:"Kč",transitLabel:"Praha Metro",       tz:"Europe/Prague",   flag:"🇨🇿", defaultFrom:"Wenceslas Square", defaultTo:"Malá Strana"},
+  "Warsaw":       {country:"Poland",     currency:"zł",transitLabel:"Warsaw Metro",          tz:"Europe/Warsaw",   flag:"🇵🇱", defaultFrom:"Centrum",  defaultTo:"Praga"},
+  "Budapest":     {country:"Hungary",    currency:"Ft",transitLabel:"BKK Metro",             tz:"Europe/Budapest", flag:"🇭🇺", defaultFrom:"Deák Ferenc", defaultTo:"Buda Castle"},
+  "Athens":       {country:"Greece",     currency:"€", transitLabel:"Athens Metro / OASTH",  tz:"Europe/Athens",   flag:"🇬🇷", defaultFrom:"Syntagma",defaultTo:"Piraeus"},
+  "Lisbon":       {country:"Portugal",   currency:"€", transitLabel:"Metro de Lisboa",       tz:"Europe/Lisbon",   flag:"🇵🇹", defaultFrom:"Baixa-Chiado", defaultTo:"Belém"},
+  "Moscow":       {country:"Russia",     currency:"₽", transitLabel:"Moscow Metro",          tz:"Europe/Moscow",   flag:"🇷🇺", defaultFrom:"Red Square", defaultTo:"Arbat"},
+  // ── AMERICAS ──
+  "Los Angeles":  {country:"United States",currency:"$",transitLabel:"LA Metro / DASH",     tz:"America/Los_Angeles",flag:"🇺🇸",defaultFrom:"Downtown LA", defaultTo:"Hollywood"},
+  "Chicago":      {country:"United States",currency:"$",transitLabel:"CTA L Train",         tz:"America/Chicago", flag:"🇺🇸", defaultFrom:"The Loop",  defaultTo:"Wicker Park"},
+  "San Francisco":{country:"United States",currency:"$",transitLabel:"BART / Muni Metro",   tz:"America/Los_Angeles",flag:"🇺🇸",defaultFrom:"Embarcadero", defaultTo:"Mission District"},
+  "Washington DC":{country:"United States",currency:"$",transitLabel:"WMATA Metro",         tz:"America/New_York",flag:"🇺🇸",  defaultFrom:"Capitol Hill", defaultTo:"Georgetown"},
+  "Boston":       {country:"United States",currency:"$",transitLabel:"MBTA T",              tz:"America/New_York",flag:"🇺🇸",  defaultFrom:"Back Bay",  defaultTo:"Cambridge"},
+  "Miami":        {country:"United States",currency:"$",transitLabel:"Miami-Dade Transit",  tz:"America/New_York",flag:"🇺🇸",  defaultFrom:"Downtown",  defaultTo:"South Beach"},
+  "Toronto":      {country:"Canada",     currency:"CA$",transitLabel:"TTC Subway",          tz:"America/Toronto", flag:"🇨🇦", defaultFrom:"Union Station", defaultTo:"Kensington Market"},
+  "Vancouver":    {country:"Canada",     currency:"CA$",transitLabel:"SkyTrain / TransLink", tz:"America/Vancouver",flag:"🇨🇦",defaultFrom:"Waterfront", defaultTo:"Commercial Drive"},
+  "Montreal":     {country:"Canada",     currency:"CA$",transitLabel:"STM Métro",           tz:"America/Toronto", flag:"🇨🇦", defaultFrom:"McGill",    defaultTo:"Plateau"},
+  "São Paulo":    {country:"Brazil",     currency:"R$", transitLabel:"CPTM / Metro SP",     tz:"America/Sao_Paulo",flag:"🇧🇷", defaultFrom:"Paulista",  defaultTo:"Vila Madalena"},
+  "Rio de Janeiro":{country:"Brazil",    currency:"R$", transitLabel:"MetrôRio / SuperVia",  tz:"America/Sao_Paulo",flag:"🇧🇷", defaultFrom:"Ipanema",   defaultTo:"Centro"},
+  "Buenos Aires": {country:"Argentina",  currency:"$",  transitLabel:"Subte Metro",         tz:"America/Argentina/Buenos_Aires",flag:"🇦🇷",defaultFrom:"Palermo",defaultTo:"San Telmo"},
+  "Mexico City":  {country:"Mexico",     currency:"$",  transitLabel:"Metro CDMX",          tz:"America/Mexico_City",flag:"🇲🇽",defaultFrom:"Zócalo",   defaultTo:"Polanco"},
+  "Bogotá":       {country:"Colombia",   currency:"$",  transitLabel:"TransMilenio / Metro", tz:"America/Bogota",  flag:"🇨🇴", defaultFrom:"Candelaria",defaultTo:"Chapinero"},
+  "Lima":         {country:"Peru",       currency:"S/", transitLabel:"Metro Lima / Metropolitano",tz:"America/Lima",flag:"🇵🇪",defaultFrom:"Miraflores",defaultTo:"San Isidro"},
+  "Santiago":     {country:"Chile",      currency:"$",  transitLabel:"Metro de Santiago",    tz:"America/Santiago",flag:"🇨🇱", defaultFrom:"Providencia", defaultTo:"Baquedano"},
+  // ── AFRICA / OCEANIA ──
+  "Cairo":        {country:"Egypt",      currency:"£",  transitLabel:"Cairo Metro",          tz:"Africa/Cairo",    flag:"🇪🇬", defaultFrom:"Tahrir Square", defaultTo:"Nasr City"},
+  "Lagos":        {country:"Nigeria",    currency:"₦",  transitLabel:"Lagos BRT / Rail",     tz:"Africa/Lagos",    flag:"🇳🇬", defaultFrom:"Victoria Island", defaultTo:"Ikeja"},
+  "Johannesburg": {country:"South Africa",currency:"R", transitLabel:"Gautrain / Rea Vaya",  tz:"Africa/Johannesburg",flag:"🇿🇦",defaultFrom:"Sandton", defaultTo:"Rosebank"},
+  "Cape Town":    {country:"South Africa",currency:"R", transitLabel:"MyCiTi BRT",           tz:"Africa/Johannesburg",flag:"🇿🇦",defaultFrom:"City Bowl",defaultTo:"Waterfront"},
+  "Nairobi":      {country:"Kenya",      currency:"KSh",transitLabel:"Matatu / SGR",         tz:"Africa/Nairobi",  flag:"🇰🇪", defaultFrom:"CBD",       defaultTo:"Westlands"},
+  "Melbourne":    {country:"Australia",  currency:"A$", transitLabel:"PTV Metro Trains",     tz:"Australia/Melbourne",flag:"🇦🇺",defaultFrom:"Flinders Street", defaultTo:"St Kilda"},
+  "Auckland":     {country:"New Zealand",currency:"NZ$",transitLabel:"Auckland Transport",   tz:"Pacific/Auckland",flag:"🇳🇿", defaultFrom:"Britomart", defaultTo:"Ponsonby"},
+};
+
+// ─── ADD CITY PANEL ───────────────────────────────────────────────────────────
+function AddCityPanel({onAdd, onClose, existingKeys}){
+  const [search,setSearch]=useState("");
+  const [selected,setSelected]=useState(null);
+
+  const filtered = Object.entries(WORLD_CITIES).filter(([name])=>
+    !existingKeys.includes(name.toLowerCase().replace(/\s/g,'_')) &&
+    name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Group by country
+  const grouped = {};
+  filtered.forEach(([name,cfg])=>{
+    if(!grouped[cfg.country]) grouped[cfg.country]=[];
+    grouped[cfg.country].push([name,cfg]);
+  });
+
+  return(
+    <div onClick={e=>e.stopPropagation()}
+      style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",
+        border:`1px solid ${C.border}`,padding:"20px 0 36px",maxHeight:"88vh",
+        display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{padding:"0 16px 12px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{textAlign:"center",marginBottom:12}}>
+          <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 10px"}}/>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:ACC}}>ADD A CITY</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:2}}>{Object.keys(WORLD_CITIES).length} cities across 50+ countries</div>
+        </div>
+        <input
+          value={search}
+          onChange={e=>setSearch(e.target.value)}
+          placeholder="Search city or country…"
+          autoFocus
+          style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}44`,
+            borderRadius:10,padding:"10px 14px",color:C.text,fontSize:13,
+            outline:"none",boxSizing:"border-box"}}/>
+      </div>
+
+      {/* City list */}
+      <div style={{overflowY:"auto",flex:1,padding:"8px 16px"}}>
+        {Object.entries(grouped).map(([country, cities])=>(
+          <div key={country}>
+            <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",fontWeight:700,
+              padding:"8px 0 4px"}}>{country.toUpperCase()}</div>
+            {cities.map(([name,cfg])=>(
+              <button key={name}
+                onClick={()=>setSelected(selected===name?null:name)}
+                style={{width:"100%",background:selected===name?`${ACC}20`:C.surface,
+                  border:`1px solid ${selected===name?ACC+"66":C.border}`,
+                  borderRadius:10,padding:"10px 13px",cursor:"pointer",marginBottom:6,
+                  display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
+                <span style={{fontSize:18,flexShrink:0}}>{cfg.flag}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13,color:C.text}}>{name}</div>
+                  <div style={{fontSize:10,color:C.muted}}>{cfg.transitLabel}</div>
+                </div>
+                {selected===name&&<span style={{color:ACC,fontSize:14}}>✓</span>}
+              </button>
+            ))}
+          </div>
+        ))}
+        {Object.keys(grouped).length===0&&(
+          <div style={{textAlign:"center",padding:"30px 0",color:C.muted,fontSize:12}}>
+            No cities found for "{search}"
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{padding:"12px 16px 0",borderTop:`1px solid ${C.border}`}}>
+        {selected&&(
+          <div style={{background:`${ACC}12`,border:`1px solid ${ACC}33`,borderRadius:9,
+            padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:16}}>{WORLD_CITIES[selected]?.flag}</span>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:C.text}}>{selected}</div>
+              <div style={{fontSize:10,color:C.muted}}>{WORLD_CITIES[selected]?.transitLabel}</div>
+            </div>
+          </div>
+        )}
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose}
+            style={{flex:1,background:"transparent",border:`1px solid ${C.border}`,
+              borderRadius:10,padding:"11px",cursor:"pointer",fontSize:12,color:C.muted}}>
+            Cancel
+          </button>
+          <button
+            disabled={!selected}
+            onClick={()=>{
+              if(!selected) return;
+              const key = selected.toLowerCase().replace(/\s+/g,'_');
+              onAdd(key, {...WORLD_CITIES[selected], name:selected, code:key.toUpperCase().slice(0,3),
+                lines:[], stations:[], alerts:[], timetable:[]});
+              onClose();
+            }}
+            style={{flex:2,background:selected?`linear-gradient(135deg,${ACC},${ACCB})`:"rgba(255,107,26,0.2)",
+              border:"none",borderRadius:10,padding:"11px",cursor:selected?"pointer":"default",
+              fontWeight:700,fontSize:13,color:selected?"#000":"rgba(0,0,0,0.3)"}}>
+            + Add {selected||"City"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 const TFL_BASE = "https://api.tfl.gov.uk";
 
 // TfL line IDs mapped from our line names
@@ -1733,7 +1920,30 @@ class ErrorBoundary extends React.Component {
 function TranzitApp(){
   // City
   const [cityKey,setCityKey]=useState("hyderabad");
-  const city=BUILTIN_CITIES[cityKey]||BUILTIN_CITIES["hyderabad"];
+  const [customCities,setCustomCities]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("tranzit_custom_cities")||"{}");}catch{return {};}
+  });
+  const [addCityOpen,setAddCityOpen]=useState(false);
+
+  const ALL_CITIES = {...BUILTIN_CITIES, ...customCities};
+  const city = ALL_CITIES[cityKey] || BUILTIN_CITIES["hyderabad"];
+
+  function onCityAdded(key, cfg){
+    const updated = {...customCities, [key]:cfg};
+    setCustomCities(updated);
+    localStorage.setItem("tranzit_custom_cities", JSON.stringify(updated));
+    setCityKey(key);
+    setCityModal(false);
+    setRoutes([]); setSearched(false); setFrom(""); setTo(""); setFromCoords(null);
+  }
+
+  function removeCustomCity(key){
+    const updated = {...customCities};
+    delete updated[key];
+    setCustomCities(updated);
+    localStorage.setItem("tranzit_custom_cities", JSON.stringify(updated));
+    if(cityKey===key) setCityKey("hyderabad");
+  }
 
   // Tabs
   const [tab,setTab]=useState("plan");
@@ -1998,24 +2208,67 @@ function TranzitApp(){
 
       {/* ── CITY MODAL ── */}
       {cityModal&&(
-        <div onClick={()=>setCityModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(4px)"}}>
-          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"80vh",overflowY:"auto"}}>
-            <div style={{textAlign:"center",marginBottom:16}}>
-              <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 12px"}}/>
-              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:ACC}}>SELECT CITY</div>
-            </div>
-            {Object.entries(BUILTIN_CITIES).map(([key,c])=>(
-              <button key={key} onClick={()=>{setCityKey(key);setCityModal(false);setRoutes([]);setSearched(false);setFrom("");setTo("");setFromCoords(null);}}
-                style={{width:"100%",background:key===cityKey?`${ACC}20`:C.surface,border:`1px solid ${key===cityKey?ACC+"66":C.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",marginBottom:7,display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
-                <span style={{fontSize:20}}>{c.flag||"🌐"}</span>
-                <div>
-                  <div style={{fontWeight:600,fontSize:13,color:C.text}}>{c.name}</div>
-                  <div style={{fontSize:10,color:C.muted}}>{c.country} · {c.transitLabel}</div>
+        <div onClick={()=>{setCityModal(false);setAddCityOpen(false);}}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(4px)"}}>
+          {addCityOpen ? (
+            <AddCityPanel
+              onAdd={onCityAdded}
+              onClose={()=>setAddCityOpen(false)}
+              existingKeys={Object.keys(ALL_CITIES)}
+            />
+          ) : (
+            <div onClick={e=>e.stopPropagation()}
+              style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",
+                border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"85vh",overflowY:"auto"}}>
+              <div style={{textAlign:"center",marginBottom:16}}>
+                <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 12px"}}/>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:ACC}}>SELECT CITY</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:2}}>{Object.keys(ALL_CITIES).length} cities · tap + to add more</div>
+              </div>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>BUILT-IN CITIES</div>
+              {Object.entries(BUILTIN_CITIES).map(([key,c])=>(
+                <button key={key} onClick={()=>{setCityKey(key);setCityModal(false);setRoutes([]);setSearched(false);setFrom("");setTo("");setFromCoords(null);}}
+                  style={{width:"100%",background:key===cityKey?`${ACC}20`:C.surface,border:`1px solid ${key===cityKey?ACC+"66":C.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",marginBottom:7,display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
+                  <span style={{fontSize:20}}>{c.flag||"🌐"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:13,color:C.text}}>{c.name}</div>
+                    <div style={{fontSize:10,color:C.muted}}>{c.country} · {c.transitLabel}</div>
+                  </div>
+                  {key===cityKey&&<span style={{fontSize:12,color:ACC}}>✓</span>}
+                </button>
+              ))}
+              {Object.keys(customCities).length>0&&(
+                <div style={{marginTop:8}}>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>MY CITIES</div>
+                  {Object.entries(customCities).map(([key,c])=>(
+                    <div key={key} style={{display:"flex",gap:8,marginBottom:7,alignItems:"center"}}>
+                      <button onClick={()=>{setCityKey(key);setCityModal(false);setRoutes([]);setSearched(false);setFrom("");setTo("");setFromCoords(null);}}
+                        style={{flex:1,background:key===cityKey?`${ACC}20`:C.surface,border:`1px solid ${key===cityKey?ACC+"66":C.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
+                        <span style={{fontSize:20}}>{c.flag||"🌐"}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:600,fontSize:13,color:C.text}}>{c.name}</div>
+                          <div style={{fontSize:10,color:C.muted}}>{c.country} · {c.transitLabel}</div>
+                        </div>
+                        {key===cityKey&&<span style={{fontSize:12,color:ACC}}>✓</span>}
+                      </button>
+                      <button onClick={()=>removeCustomCity(key)}
+                        style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:8,padding:"10px 12px",cursor:"pointer",color:"#FF4466",fontSize:12,flexShrink:0}}>✕</button>
+                    </div>
+                  ))}
                 </div>
-                {key===cityKey&&<span style={{marginLeft:"auto",fontSize:12,color:ACC}}>✓</span>}
+              )}
+              <button onClick={()=>setAddCityOpen(true)}
+                style={{width:"100%",marginTop:12,background:`${ACC}10`,border:`2px dashed ${ACC}44`,
+                  borderRadius:12,padding:"13px",cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+                <span style={{fontSize:22}}>🌍</span>
+                <div style={{textAlign:"left"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:ACC}}>+ Add Another City</div>
+                  <div style={{fontSize:10,color:C.muted}}>{Object.keys(WORLD_CITIES).length} cities across 50+ countries</div>
+                </div>
               </button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
