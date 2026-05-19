@@ -632,7 +632,7 @@ function loadGoogleMaps(key) {
   _gmapsPromise = new Promise((resolve, reject) => {
     window._tranzitGMapsLoaded = () => { _gmapsReady = true; resolve(); };
     const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=_tranzitGMapsLoaded&v=weekly`;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&callback=_tranzitGMapsLoaded&v=weekly`;
     s.async = true;
     s.onerror = () => { _gmapsPromise = null; reject(new Error('Google Maps failed to load. Check your API key.')); };
     document.head.appendChild(s);
@@ -1445,34 +1445,81 @@ function LiveIntelTab({city, tflKey, fmtDepTime, cityTimeStr}) {
 }
 
 
-function NavigateTab({city}){
+function NavigateTab({city, gmapsKey}){
   const [phase,setPhase]=useState("idle");
+  const [pos,setPos]=useState(null);
   const [stations,setStations]=useState([]);
+  const [busStops,setBusStops]=useState([]);
+  const [busLoading,setBusLoading]=useState(false);
   const [err,setErr]=useState("");
 
   async function detect(){
     setPhase("locating"); setErr("");
     try{
-      const pos=await getLocation();
-      const all=STATION_COORDS[city.code]||[];
-      const sorted=all.map(s=>({...s,d:haversineKm(pos.lat,pos.lng,s.lat,s.lng)}))
+      const p = await getLocation();
+      setPos(p);
+
+      // 1. Metro — from local DB (instant, no API needed)
+      const all = STATION_COORDS[city.code]||[];
+      const sorted = all.map(s=>({...s, d:haversineKm(p.lat,p.lng,s.lat,s.lng)}))
         .sort((a,b)=>a.d-b.d).slice(0,5);
-      setStations(sorted); setPhase("results");
-    }catch(e){ setErr("Could not get location. Allow GPS in Settings > Safari."); setPhase("error"); }
+      setStations(sorted);
+      setPhase("results");
+
+      // 2. Bus stops — Google Maps Places API (if key available)
+      if(gmapsKey){
+        setBusLoading(true);
+        try{
+          await loadGoogleMaps(gmapsKey);
+          const service = new window.google.maps.places.PlacesService(
+            document.createElement('div')
+          );
+          service.nearbySearch({
+            location: new window.google.maps.LatLng(p.lat, p.lng),
+            radius: 1500,
+            type: 'bus_station',
+          }, (results, status) => {
+            if(status === window.google.maps.places.PlacesServiceStatus.OK && results?.length){
+              const stops = results.slice(0,5).map(r => ({
+                name: r.name,
+                vicinity: r.vicinity||"",
+                lat: r.geometry.location.lat(),
+                lng: r.geometry.location.lng(),
+                d: haversineKm(p.lat, p.lng, r.geometry.location.lat(), r.geometry.location.lng()),
+                placeId: r.place_id,
+              })).sort((a,b)=>a.d-b.d);
+              setBusStops(stops);
+            }
+            setBusLoading(false);
+          });
+        }catch(e){ setBusLoading(false); }
+      }
+    }catch(e){
+      setErr("Could not get location. Allow GPS in Settings > Safari.");
+      setPhase("error");
+    }
   }
 
   if(phase==="idle") return(
     <div style={{textAlign:"center",padding:"40px 0"}}>
       <div style={{fontSize:48,marginBottom:16}}>🧭</div>
-      <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}}>Nearest Stations</div>
-      <div style={{fontSize:12,color:C.muted,marginBottom:24,lineHeight:1.6}}>Find metro stations closest to your current GPS location</div>
-      <button onClick={detect} style={{background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",borderRadius:14,padding:"14px 28px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#000"}}>
+      <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:6}}>Find Nearest Stops</div>
+      <div style={{fontSize:12,color:C.muted,marginBottom:24,lineHeight:1.6,padding:"0 20px"}}>
+        Instantly find metro stations and bus stops closest to you with navigation
+      </div>
+      <button onClick={detect}
+        style={{background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",
+          borderRadius:14,padding:"14px 32px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#000",marginBottom:16}}>
         📍 Detect My Location
       </button>
-      <div style={{marginTop:16}}>
-        <a href="https://www.google.com/maps/search/metro+station+near+me/" target="_blank"
-          style={{display:"inline-block",background:"rgba(26,115,232,0.12)",border:"1px solid rgba(26,115,232,0.3)",borderRadius:10,padding:"10px 18px",color:"#4285F4",fontSize:12,textDecoration:"none",fontWeight:600}}>
-          🗺️ Open in Google Maps
+      <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",padding:"0 16px"}}>
+        <a href={`https://www.google.com/maps/search/metro+station+near+me/`} target="_blank"
+          style={{background:"rgba(26,115,232,0.12)",border:"1px solid rgba(26,115,232,0.3)",borderRadius:10,padding:"9px 14px",color:"#4285F4",fontSize:11,textDecoration:"none",fontWeight:600}}>
+          🚇 Metro on Maps
+        </a>
+        <a href={`https://www.google.com/maps/search/bus+stop+near+me/`} target="_blank"
+          style={{background:"rgba(245,166,35,0.12)",border:"1px solid rgba(245,166,35,0.3)",borderRadius:10,padding:"9px 14px",color:"#F5A623",fontSize:11,textDecoration:"none",fontWeight:600}}>
+          🚌 Bus Stops on Maps
         </a>
       </div>
     </div>
@@ -1489,39 +1536,177 @@ function NavigateTab({city}){
     <div style={{textAlign:"center",padding:"40px 0"}}>
       <div style={{fontSize:40,marginBottom:14}}>❌</div>
       <div style={{fontSize:13,color:C.textDim,lineHeight:1.6,marginBottom:20}}>{err}</div>
-      <button onClick={()=>setPhase("idle")} style={{background:`${ACC}22`,border:`1px solid ${ACC}55`,borderRadius:10,padding:"10px 20px",cursor:"pointer",color:ACC,fontSize:13,fontWeight:600}}>Try Again</button>
+      <button onClick={()=>setPhase("idle")}
+        style={{background:`${ACC}22`,border:`1px solid ${ACC}55`,borderRadius:10,
+          padding:"10px 20px",cursor:"pointer",color:ACC,fontSize:13,fontWeight:600}}>
+        Try Again
+      </button>
     </div>
   );
 
-  return(
-    <div>
-      <div style={{fontSize:11,color:C.textDim,marginBottom:12}}>Nearest metro stations · <strong style={{color:C.text}}>{city.name}</strong></div>
-      {stations.map((s,i)=>(
-        <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"13px 14px",marginBottom:9}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-            <div>
-              <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.n}</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.line} · {(s.d*1000).toFixed(0)}m away</div>
-            </div>
-            <div style={{fontSize:10,background:`${ACC}20`,color:ACC,borderRadius:6,padding:"3px 8px",fontWeight:600}}>
-              {s.d<1?(s.d*1000).toFixed(0)+"m":s.d.toFixed(1)+"km"}
-            </div>
+  // ── Results ──
+  function StopCard({name, subtitle, dist, walkUrl, driveUrl, badge, badgeColor, index}){
+    const dm = dist<1?(dist*1000).toFixed(0)+"m":dist.toFixed(1)+"km";
+    const walkMins = Math.round((dist*1000)/80); // avg 80m/min walking
+    return(
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,
+        padding:"12px 14px",marginBottom:9}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+          <div style={{flex:1,minWidth:0,paddingRight:8}}>
+            <div style={{fontWeight:700,fontSize:14,color:C.text,lineHeight:1.3}}>{name}</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{subtitle}</div>
           </div>
-          <div style={{display:"flex",gap:8}}>
-            <a href={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(s.n+" station "+city.name)}/data=!4m2!4m1!3e2`}
-              target="_blank" style={{flex:1,background:"rgba(0,212,170,0.1)",border:"1px solid rgba(0,212,170,0.25)",borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",color:C.emerald,fontSize:11,fontWeight:600}}>
-              🚶 Walk
-            </a>
-            <a href={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(s.n+" station "+city.name)}/data=!4m2!4m1!3e0`}
-              target="_blank" style={{flex:1,background:"rgba(79,195,247,0.1)",border:"1px solid rgba(79,195,247,0.25)",borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",color:C.sky,fontSize:11,fontWeight:600}}>
-              🚗 Drive
-            </a>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+            <div style={{fontSize:10,background:`${badgeColor}22`,color:badgeColor,
+              borderRadius:6,padding:"2px 8px",fontWeight:700}}>{dm}</div>
+            <div style={{fontSize:9,color:C.muted}}>~{walkMins} min walk</div>
           </div>
         </div>
-      ))}
-      <button onClick={()=>{setPhase("idle");setStations([]);}} style={{width:"100%",marginTop:6,background:"transparent",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px",cursor:"pointer",color:C.muted,fontSize:12}}>
-        ↩ Search Again
-      </button>
+        <div style={{display:"flex",gap:8}}>
+          <a href={walkUrl} target="_blank"
+            style={{flex:1,background:`${C.emerald}12`,border:`1px solid ${C.emerald}33`,
+              borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",
+              color:C.emerald,fontSize:11,fontWeight:700,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+            🚶 Walk
+          </a>
+          <a href={driveUrl} target="_blank"
+            style={{flex:1,background:"rgba(79,195,247,0.1)",border:"1px solid rgba(79,195,247,0.25)",
+              borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",
+              color:C.sky,fontSize:11,fontWeight:700,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+            🚗 Drive
+          </a>
+          <a href={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(name+", "+city.name)}`}
+            target="_blank"
+            style={{flex:1,background:"linear-gradient(135deg,rgba(26,115,232,0.15),rgba(66,133,244,0.1))",
+              border:"1px solid rgba(26,115,232,0.3)",
+              borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",
+              color:"#4285F4",fontSize:11,fontWeight:700,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+            🗺️ Maps
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div>
+      {/* Location chip */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:14,
+        background:"rgba(0,212,170,0.06)",border:`1px solid ${C.emerald}33`,
+        borderRadius:9,padding:"7px 11px"}}>
+        <span style={{fontSize:12}}>📍</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:10,fontWeight:600,color:C.emerald}}>Your location</div>
+          <div style={{fontSize:9,color:C.muted,marginTop:1}}>{pos?.lat}, {pos?.lng} · {city.name}</div>
+        </div>
+        <button onClick={()=>{setPhase("idle");setStations([]);setBusStops([]);setPos(null);}}
+          style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,
+            padding:"3px 8px",cursor:"pointer",fontSize:10,color:C.muted}}>
+          ↩
+        </button>
+      </div>
+
+      {/* ── METRO STATIONS ── */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <div style={{fontSize:18}}>🚇</div>
+        <div>
+          <div style={{fontWeight:700,fontSize:13,color:C.text}}>Nearest Metro Stations</div>
+          <div style={{fontSize:9,color:C.muted}}>From local transit database</div>
+        </div>
+      </div>
+
+      {stations.length > 0 ? stations.map((s,i)=>(
+        <StopCard key={i}
+          name={s.n}
+          subtitle={s.line}
+          dist={s.d}
+          walkUrl={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(s.n+" metro station, "+city.name)}/data=!4m2!4m1!3e2`}
+          driveUrl={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(s.n+" metro station, "+city.name)}/data=!4m2!4m1!3e0`}
+          badgeColor={ACC}
+        />
+      )) : (
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,
+          padding:"14px",marginBottom:12,textAlign:"center"}}>
+          <div style={{fontSize:11,color:C.muted}}>No metro stations in local database for {city.name}</div>
+          <a href={`https://www.google.com/maps/search/metro+station+near+me/`} target="_blank"
+            style={{display:"inline-block",marginTop:8,fontSize:11,color:"#4285F4",textDecoration:"none",fontWeight:600}}>
+            Search on Google Maps →
+          </a>
+        </div>
+      )}
+
+      {/* ── BUS STOPS ── */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,marginTop:8}}>
+        <div style={{fontSize:18}}>🚌</div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.text}}>Nearest Bus Stops</div>
+          <div style={{fontSize:9,color:C.muted}}>
+            {gmapsKey ? "From Google Maps Places — live data" : "Google Maps key needed for live bus stops"}
+          </div>
+        </div>
+        {busLoading&&(
+          <div style={{fontSize:10,color:C.muted,display:"flex",alignItems:"center",gap:4}}>
+            <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Loading…
+          </div>
+        )}
+      </div>
+
+      {!gmapsKey ? (
+        // No Google Maps key — show direct Google Maps links
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,
+          padding:"14px",marginBottom:12}}>
+          <div style={{fontSize:11,color:C.textDim,marginBottom:12,lineHeight:1.6}}>
+            Add a Google Maps API key in ⚙️ Setup Keys to see live nearby bus stops.
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {[
+              {label:"Bus stops near me",url:`https://www.google.com/maps/search/bus+stop+near+${pos?.lat},${pos?.lng}/`},
+              {label:"Bus stand near me",url:`https://www.google.com/maps/search/bus+stand+near+${pos?.lat},${pos?.lng}/`},
+            ].map((l,i)=>(
+              <a key={i} href={l.url} target="_blank"
+                style={{flex:1,background:"rgba(245,166,35,0.1)",border:"1px solid rgba(245,166,35,0.3)",
+                  borderRadius:9,padding:"10px 8px",textAlign:"center",textDecoration:"none",
+                  color:"#F5A623",fontSize:11,fontWeight:600}}>
+                🗺️ {l.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : busLoading ? (
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,
+          padding:"20px",textAlign:"center",marginBottom:12}}>
+          <div style={{fontSize:24,marginBottom:8,animation:"pulse 1.5s infinite"}}>🚌</div>
+          <div style={{fontSize:11,color:C.textDim}}>Searching nearby bus stops via Google Maps…</div>
+        </div>
+      ) : busStops.length > 0 ? busStops.map((s,i)=>(
+        <StopCard key={i}
+          name={s.name}
+          subtitle={s.vicinity}
+          dist={s.d}
+          walkUrl={`https://www.google.com/maps/dir/My+Location/${s.lat},${s.lng}/data=!4m2!4m1!3e2`}
+          driveUrl={`https://www.google.com/maps/dir/My+Location/${s.lat},${s.lng}/data=!4m2!4m1!3e0`}
+          badgeColor={"#F5A623"}
+        />
+      )) : (
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,
+          padding:"14px",marginBottom:12,textAlign:"center"}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:8}}>No bus stops found within 1.5 km</div>
+          <a href={`https://www.google.com/maps/search/bus+stop+near+${pos?.lat},${pos?.lng}/`}
+            target="_blank"
+            style={{fontSize:11,color:"#4285F4",textDecoration:"none",fontWeight:600}}>
+            Search wider area on Google Maps →
+          </a>
+        </div>
+      )}
+
+      {/* Bottom note */}
+      <div style={{fontSize:9,color:C.muted,textAlign:"center",marginTop:4,lineHeight:1.5}}>
+        Metro: local database · Bus stops: Google Maps Places API<br/>
+        Distances are straight-line — actual walk may vary
+      </div>
     </div>
   );
 }
@@ -2263,7 +2448,7 @@ function TranzitApp(){
         )}
 
         {/* NAVIGATE */}
-        {tab==="navigate"&&<NavigateTab city={city}/>}
+        {tab==="navigate"&&<NavigateTab city={city} gmapsKey={gmapsKey}/>}
 
         {/* LIVE INTEL */}
         {tab==="live"&&(
