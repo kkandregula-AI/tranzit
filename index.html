@@ -26,34 +26,31 @@ input,button{font-family:'DM Sans',sans-serif}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="text/babel">
-const {useState, useEffect, useRef} = React;
+const {useState,useEffect,useRef,useCallback} = React;
 
-const API_KEY_STORAGE = "tranzit_api_key";
-const ROUTE_CACHE_KEY = "tranzit_cache_v3";
-const SOS_KEY = "tranzit_sos";
+// ─── STORAGE KEYS ─────────────────────────────────────────────────────────────
+const ANTHROPIC_KEY_STORE = "tranzit_api_key";
+const GMAPS_KEY_STORE     = "tranzit_gmaps_key";
+const ROUTE_CACHE_KEY     = "tranzit_cache_v4";
+const SOS_KEY             = "tranzit_sos";
 
+// ─── THEME ────────────────────────────────────────────────────────────────────
 const C = {
   bg:"#0A0A0F", surface:"#12121A", border:"rgba(255,255,255,0.08)",
   text:"#F0F0F5", textDim:"rgba(240,240,245,0.65)", muted:"rgba(240,240,245,0.35)",
   emerald:"#00D4AA", crimson:"#FF4466", sky:"#4FC3F7",
 };
-const ACC = "#FF6B1A", ACCB = "#F5A623";
+const ACC="#FF6B1A", ACCB="#F5A623";
 
-const SOS_NUMS = {
-  "India":"112","United Kingdom":"999","United States":"911",
-  "Australia":"000","Singapore":"999","UAE":"999",
-  "Japan":"110","France":"15","Germany":"110","Canada":"911",
-};
-
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const MODEL_ID = "claude-sonnet-4-5";
+const SOS_NUMS = {"India":"112","United Kingdom":"999","United States":"911","Australia":"000","Singapore":"999","UAE":"999","Japan":"110","France":"15","Germany":"110","Canada":"911"};
 
-const ROUTE_CACHE = (()=>{
-  try{return JSON.parse(localStorage.getItem(ROUTE_CACHE_KEY)||"{}")}
-  catch{return {}}
-})();
+const ROUTE_CACHE = (()=>{try{return JSON.parse(localStorage.getItem(ROUTE_CACHE_KEY)||"{}")}catch{return {}}})();
 
+// ─── DATA ─────────────────────────────────────────────────────────────────────
 const BUILTIN_CITIES = {
-  hyderabad:{name:"Hyderabad",country:"India",tz:"Asia/Kolkata",tz:"Asia/Kolkata",tz:"Asia/Kolkata",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],
+  hyderabad:{name:"Hyderabad",country:"India",tz:"Asia/Kolkata",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],
     coaches:[{l:"M1",p:78,special:false},{l:"M2",p:65,special:false},{l:"M3 ♀",p:55,special:true,note:"Women only"}],
     lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14,freqMins:4},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11,freqMins:6},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8,freqMins:8}],
     stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],
@@ -625,8 +622,340 @@ const STATION_COORDS = {
 };
 
 
+// ─── GOOGLE MAPS LOADER ───────────────────────────────────────────────────────
+let _gmapsReady = false;
+let _gmapsPromise = null;
+
+function loadGoogleMaps(key) {
+  if (_gmapsReady) return Promise.resolve();
+  if (_gmapsPromise) return _gmapsPromise;
+  _gmapsPromise = new Promise((resolve, reject) => {
+    window._tranzitGMapsLoaded = () => { _gmapsReady = true; resolve(); };
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=_tranzitGMapsLoaded&v=weekly`;
+    s.async = true;
+    s.onerror = () => { _gmapsPromise = null; reject(new Error('Google Maps failed to load. Check your API key.')); };
+    document.head.appendChild(s);
+    setTimeout(() => { if (!_gmapsReady) { _gmapsPromise = null; reject(new Error('Google Maps timeout')); }}, 12000);
+  });
+  return _gmapsPromise;
+}
+
+// ─── GET DIRECTIONS FROM GOOGLE ───────────────────────────────────────────────
+function gMapsRoute(origin, destination, mode, extras={}) {
+  return new Promise((resolve, reject) => {
+    const svc = new window.google.maps.DirectionsService();
+    svc.route({
+      origin, destination,
+      travelMode: window.google.maps.TravelMode[mode],
+      provideRouteAlternatives: mode === 'TRANSIT',
+      drivingOptions: mode === 'DRIVING' ? {departureTime: new Date(), trafficModel: 'bestguess'} : undefined,
+      transitOptions: mode === 'TRANSIT' ? {
+        departureTime: new Date(),
+        modes: [
+          window.google.maps.TransitMode.BUS,
+          window.google.maps.TransitMode.SUBWAY,
+          window.google.maps.TransitMode.TRAIN,
+          window.google.maps.TransitMode.TRAM,
+          window.google.maps.TransitMode.RAIL,
+        ]
+      } : undefined,
+      ...extras
+    }, (result, status) => {
+      if (status === 'OK') resolve(result);
+      else resolve(null); // Don't reject — just return null so we can handle gracefully
+    });
+  });
+}
+
+// ─── PARSE GOOGLE TRANSIT ROUTE ───────────────────────────────────────────────
+function parseTransitRoute(route, index) {
+  const leg = route.legs[0];
+  const steps = [];
+
+  leg.steps.forEach(step => {
+    if (step.travel_mode === 'WALKING' && step.distance.value > 80) {
+      const dir = step.html_instructions
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g,' ')
+        .split('.')[0]
+        .trim();
+      steps.push(`Walk ${step.distance.text} (${dir})`);
+    } else if (step.travel_mode === 'TRANSIT') {
+      const t = step.transit;
+      const line = t.line;
+      const vType = line.vehicle?.type || 'BUS';
+      const isMetro = ['SUBWAY','METRO_RAIL','HEAVY_RAIL','COMMUTER_TRAIN'].includes(vType);
+      const lineName = line.short_name || line.name || '';
+      const headsign = t.headsign ? ` towards ${t.headsign}` : '';
+      const stopCount = t.num_stops;
+      steps.push(
+        `${isMetro ? '🚇' : '🚌'} From ${t.departure_stop.name} → ${lineName}${headsign} (${stopCount} stop${stopCount!==1?'s':''}) → Alight ${t.arrival_stop.name}`
+      );
+    }
+  });
+
+  const transitSteps = leg.steps.filter(s => s.travel_mode === 'TRANSIT');
+  const hasMetro = transitSteps.some(s => ['SUBWAY','METRO_RAIL','HEAVY_RAIL'].includes(s.transit?.line?.vehicle?.type));
+  const hasBus   = transitSteps.some(s => s.transit?.line?.vehicle?.type === 'BUS');
+
+  let icon='🚌', label='Transit';
+  if (hasMetro && hasBus) { icon='🚇'; label='Metro + Bus'; }
+  else if (hasMetro) { icon='🚇'; label='Metro'; }
+  else if (hasBus)   { icon='🚌'; label='Bus'; }
+
+  const timeMin = Math.round(leg.duration.value / 60);
+  const distKm  = +(leg.distance.value / 1000).toFixed(2);
+  const fare    = leg.fare?.value ? Math.round(leg.fare.value) : null;
+
+  const depTime = leg.departure_time?.text || '';
+  const arrTime = leg.arrival_time?.text   || '';
+
+  return {
+    id:`gmaps_transit_${index}`,
+    icon, label,
+    via: steps.join(' → '),
+    time: timeMin,
+    fare: fare !== null ? fare : Math.max(10, Math.round(distKm * 4)),
+    fareVerified: fare !== null,
+    crowd:65, reliability:92, delay:0,
+    co2: +(distKm * 0.04).toFixed(1),
+    verified:true, tip:'',
+    meta:`${depTime}${depTime&&arrTime?' – ':''}${arrTime}`,
+    distKm,
+  };
+}
+
+function parseDrivingRoute(route, label, icon, farePerKm) {
+  const leg = route.legs[0];
+  const timeMin = Math.round((leg.duration_in_traffic?.value || leg.duration.value) / 60);
+  const distKm  = +(leg.distance.value / 1000).toFixed(2);
+  const summary = route.summary || '';
+  return {
+    id:`gmaps_${label.toLowerCase().replace(' ','_')}`,
+    icon, label,
+    via:`${distKm.toFixed(1)} km via ${summary} — ${leg.duration_in_traffic ? 'with live traffic' : 'estimated'}`,
+    time:timeMin,
+    fare:Math.round(distKm * farePerKm),
+    fareVerified:false, crowd:50, reliability:78, delay:0,
+    co2:+(distKm * 0.21).toFixed(1),
+    verified:true, tip:'', meta:`${distKm.toFixed(1)} km`, distKm,
+  };
+}
+
+function parseWalkRoute(route) {
+  const leg = route.legs[0];
+  const distKm = +(leg.distance.value / 1000).toFixed(2);
+  if (distKm > 4) return null;
+  const timeMin = Math.round(leg.duration.value / 60);
+  const stepDesc = leg.steps.slice(0,3)
+    .map(s => s.html_instructions.replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').trim())
+    .filter(Boolean).join(' → ');
+  return {
+    id:'gmaps_walk', icon:'🚶', label:'Walk',
+    via: stepDesc || `Walk ${distKm.toFixed(1)} km`,
+    time:timeMin, fare:0,
+    fareVerified:true, crowd:5, reliability:99, delay:0,
+    co2:0, verified:true, tip:'', meta:`${distKm.toFixed(1)} km`, distKm,
+  };
+}
+
+// ─── FETCH ALL GOOGLE ROUTES ──────────────────────────────────────────────────
+async function fetchGoogleRoutes(from, to, gmapsKey, city) {
+  await loadGoogleMaps(gmapsKey);
+
+  // Fare-per-km estimates by country (auto/cab)
+  const autoPerKm = {"India":12,"Singapore":0,"UAE":0,"Japan":0,"United Kingdom":0,"United States":0,"Australia":0,"Germany":0,"France":0,"Canada":0}[city.country] || 12;
+  const cabPerKm  = {"India":16,"Singapore":3.2,"UAE":2.8,"Japan":5,"United Kingdom":2.5,"United States":2.8,"Australia":3.5,"Germany":2,"France":2.2,"Canada":2.5}[city.country] || 16;
+
+  // Parallel requests
+  const [transitResult, driveResult, walkResult] = await Promise.all([
+    gMapsRoute(from, to, 'TRANSIT'),
+    gMapsRoute(from, to, 'DRIVING'),
+    gMapsRoute(from, to, 'WALKING'),
+  ]);
+
+  const routes = [];
+
+  // Transit alternatives (could be 1-3 different routes)
+  if (transitResult?.routes?.length) {
+    transitResult.routes.slice(0, 3).forEach((r, i) => {
+      const parsed = parseTransitRoute(r, i);
+      // Deduplicate by label
+      if (!routes.find(x => x.label === parsed.label)) {
+        routes.push(parsed);
+      }
+    });
+  }
+
+  // Driving route — parse for cab + auto estimates
+  if (driveResult?.routes?.[0]) {
+    const driveRoute = driveResult.routes[0];
+    const distKm = +(driveRoute.legs[0].distance.value / 1000).toFixed(2);
+
+    if (autoPerKm > 0) {
+      routes.push(parseDrivingRoute(driveRoute, 'Auto-Rickshaw', '🛺', autoPerKm));
+    }
+    routes.push(parseDrivingRoute(driveRoute, 'Cab / Taxi', '🚗', cabPerKm));
+
+    // Cycle if under 5km
+    if (distKm <= 5) {
+      const cycleMin = Math.round((distKm / 15) * 60);
+      routes.push({
+        id:'gmaps_cycle', icon:'🚲', label:'Cycle',
+        via:`${distKm.toFixed(1)} km via ${driveRoute.summary} (road distance)`,
+        time:cycleMin, fare:0,
+        fareVerified:true, crowd:5, reliability:90, delay:0,
+        co2:0, verified:true, tip:'', meta:`${distKm.toFixed(1)} km`, distKm,
+      });
+    }
+  }
+
+  // Walk if short enough
+  if (walkResult?.routes?.[0]) {
+    const walk = parseWalkRoute(walkResult.routes[0]);
+    if (walk) routes.push(walk);
+  }
+
+  return routes;
+}
+
+// ─── ADD CLAUDE INTELLIGENCE LAYER ───────────────────────────────────────────
+async function addClaudeIntelligence(routes, city, from, to, anthropicKey, onTokens) {
+  if (!anthropicKey || !routes.length) return routes;
+
+  const routeList = routes.map((r, i) =>
+    `${i+1}. ${r.icon} ${r.label}: ${r.time} min, ${city.currency}${r.fare}, route: "${r.via}"`
+  ).join('\n');
+
+  const prompt = `You are a local transit expert for ${city.name}, ${city.country}.
+
+These are VERIFIED routes from Google Maps for journey: "${from.replace(/^📍\s*/,'')}" → "${to}":
+${routeList}
+
+For each route provide ONE sharp, practical insight (max 20 words). Focus on:
+- Exact platform/door/stop tips (e.g. "Board from Door 4, coach M2 is less crowded at this hour")
+- Peak hour advice (e.g. "Expect 15-min wait at ${city.name} rush hour — leave 10 min earlier")
+- Hidden tricks (e.g. "Auto drivers near Nanakramguda rarely use meters — agree fare before boarding: ₹80-100")
+- Comparison insight (e.g. "Bus 216G is less crowded than 219 on this route")
+
+Return ONLY a JSON array of ${routes.length} strings, one tip per route:
+["tip for route 1", "tip for route 2", ...]`;
+
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 15000);
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":anthropicKey,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:MODEL_ID, max_tokens:600,
+        messages:[{role:"user", content:prompt}]}),
+      signal: ctrl.signal,
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const tokens = (data.usage?.input_tokens||0)+(data.usage?.output_tokens||0);
+      onTokens(tokens);
+      const txt = data.content.map(x=>x.text||"").join("").replace(/```json|```/g,"").trim();
+      const tips = JSON.parse(txt);
+      return routes.map((r, i) => ({...r, tip: tips[i] || r.tip}));
+    }
+  } catch(e) { /* Tips are optional — don't fail the route fetch */ }
+  return routes;
+}
+
+// ─── CLAUDE-ONLY FALLBACK (when no Google key) ────────────────────────────────
+async function fetchClaudeRoutes(city, from, to, coords, anthropicKey, onInfo) {
+  const cleanFrom = from.replace(/^📍\s*/,"").trim();
+  const cacheKey = `${city.code}|${coords?`${coords.lat},${coords.lng}`:cleanFrom}|${to}`.toLowerCase().slice(0,120);
+
+  if (ROUTE_CACHE[cacheKey]) {
+    const age = Math.round((Date.now()-ROUTE_CACHE[cacheKey].ts)/60000);
+    onInfo({cached:true, age:age<2?"just now":`${age}m ago`, tokens:0, savedTokens:ROUTE_CACHE[cacheKey].tokens||600, verified:false});
+    return ROUTE_CACHE[cacheKey].routes;
+  }
+
+  const locContext = coords
+    ? `GPS: ${coords.lat}, ${coords.lng} (address: "${cleanFrom}")`
+    : `Address: "${cleanFrom}"`;
+
+  const prompt = `Transit expert for ${city.name}, ${city.country}. Currency: ${city.currency}.
+
+Origin: ${locContext}${coords ? `\nUse these exact coordinates to identify the TRULY nearest stops.` : ''}
+Destination: "${to}"
+
+Generate 6 route estimates. IMPORTANT: Label all as "AI Estimate" since this is not verified real-time data.
+- Metro (walk): nearest real metro station by name + distance in metres
+- Metro (feeder): auto/cab to metro
+- Bus: real nearest bus stop name + real route numbers
+- Auto-rickshaw: realistic fare for ${city.name}
+- Cab: realistic Ola/Uber fare
+- Walk/Cycle: only if under 3km
+
+Rules: Real station/stop names only. Step-by-step via field. Correct fares for ${city.name}.
+
+Return ONLY JSON array:
+[{"id":"1","icon":"🚇","label":"Metro (Walk)","via":"Walk Xm to [Station] → [Line] → [N] stops → [Station] → Walk Xm","time":0,"fare":0,"crowd":0,"reliability":0,"delay":0,"co2":0,"tip":"AI estimate — verify on Google Maps before travel","verified":false}]`;
+
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), 20000);
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":anthropicKey,
+      "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:MODEL_ID, max_tokens:1800, messages:[{role:"user",content:prompt}]}),
+    signal: ctrl.signal,
+  });
+  if (resp.status===401||resp.status===403) throw new Error("AUTH_FAILED");
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  const data = await resp.json();
+  const txt = data.content.map(x=>x.text||"").join("").replace(/```json|```/g,"").trim();
+  const routes = JSON.parse(txt).map(r=>({...r, verified:false}));
+  const tokens = (data.usage?.input_tokens||0)+(data.usage?.output_tokens||0);
+  ROUTE_CACHE[cacheKey] = {routes, ts:Date.now(), tokens};
+  try{localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(ROUTE_CACHE));}catch{}
+  onInfo({cached:false, tokens, savedTokens:0, verified:false});
+  return routes;
+}
+
+// ─── MAIN ROUTE FETCH ORCHESTRATOR ───────────────────────────────────────────
+async function fetchRoutes(city, from, to, gmapsKey, anthropicKey, coords, onInfo) {
+  const cleanFrom = from.replace(/^📍\s*/,"").trim();
+
+  if (gmapsKey) {
+    // ── GOOGLE MAPS PATH: real data + Claude tips ──
+    const cacheKey = `gmaps|${city.code}|${cleanFrom}|${to}`.toLowerCase().slice(0,120);
+    if (ROUTE_CACHE[cacheKey]) {
+      const age = Math.round((Date.now()-ROUTE_CACHE[cacheKey].ts)/60000);
+      onInfo({cached:true, age:age<2?"just now":`${age}m ago`, tokens:0, savedTokens:ROUTE_CACHE[cacheKey].tokens||0, verified:true});
+      return ROUTE_CACHE[cacheKey].routes;
+    }
+
+    let routes = await fetchGoogleRoutes(from, to, gmapsKey, city);
+    if (!routes.length) throw new Error("No routes found. Check your origin and destination.");
+
+    let totalTokens = 0;
+    if (anthropicKey) {
+      routes = await addClaudeIntelligence(routes, city, from, to, anthropicKey, t => totalTokens += t);
+    }
+
+    ROUTE_CACHE[cacheKey] = {routes, ts:Date.now(), tokens:totalTokens};
+    try{localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(ROUTE_CACHE));}catch{}
+    onInfo({cached:false, tokens:totalTokens, savedTokens:0, verified:true});
+    return routes;
+
+  } else if (anthropicKey) {
+    // ── CLAUDE-ONLY PATH: estimates with disclaimer ──
+    return fetchClaudeRoutes(city, from, to, coords, anthropicKey, onInfo);
+  } else {
+    throw new Error("Please add at least one API key to find routes.");
+  }
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function haversineKm(lat1,lng1,lat2,lng2){
-  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
   const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
@@ -642,8 +971,7 @@ function getLocation(){
 }
 
 async function reverseGeocode(lat,lng){
-  const ctrl=new AbortController();
-  setTimeout(()=>ctrl.abort(),5000);
+  const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),5000);
   const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
     {headers:{"User-Agent":"Tranzit/1.0"},signal:ctrl.signal});
   const d=await r.json();
@@ -651,67 +979,11 @@ async function reverseGeocode(lat,lng){
 }
 
 async function nominatimSearch(q,cityName){
-  const ctrl=new AbortController();
-  setTimeout(()=>ctrl.abort(),4000);
+  const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),4000);
   const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q+", "+cityName)}&format=json&limit=5`,
     {headers:{"User-Agent":"Tranzit/1.0"},signal:ctrl.signal});
   const d=await r.json();
   return d.map(x=>x.display_name.split(",").slice(0,3).join(", "));
-}
-
-async function fetchRoutes(city,from,to,apiKey,onInfo){
-  const key=`${city.code}|${from.replace(/^📍\s*/,"").trim()}|${to}`.toLowerCase().slice(0,120);
-  if(ROUTE_CACHE[key]){
-    const age=Math.round((Date.now()-ROUTE_CACHE[key].ts)/60000);
-    onInfo({cached:true,age:age<2?"just now":`${age}m ago`,tokens:0,savedTokens:ROUTE_CACHE[key].tokens||800});
-    return ROUTE_CACHE[key].routes;
-  }
-  const cleanFrom=from.replace(/^📍\s*/,"").trim();
-
-  const prompt=`You are a precise transit expert for ${city.name}, ${city.country}. Currency: ${city.currency}.
-
-A traveller is at: "${cleanFrom}"
-They want to reach: "${to}"
-
-Generate exactly 6 route options covering ALL available transport modes. For each route provide highly specific, followable directions.
-
-MODES TO COVER:
-1. 🚇 Metro (walk to station) — identify the CLOSEST real metro station to "${cleanFrom}" by name and distance, give exact metro line, direction, and alighting station closest to "${to}"
-2. 🚇 Metro (ride feeder) — auto/cab to a metro station (could be different from above if faster), then metro
-3. 🚌 Bus direct — identify the REAL nearest bus stop to "${cleanFrom}" by name, list ALL bus route numbers that actually run between these areas (check real ${city.name} bus routes), nearest stop to "${to}"
-4. 🛺 Auto-rickshaw direct — realistic meter fare for ${city.name}, typical travel time with traffic
-5. 🚗 Cab/taxi — realistic app cab fare (Ola/Uber) for this distance in ${city.name}
-6. 🚶 Walk or 🚲 Cycle — only include if the straight-line distance is realistically under 3.5km
-
-CRITICAL ACCURACY RULES:
-- NEVER invent station or stop names. Only use stations that ACTUALLY EXIST in ${city.name}.
-- NEVER name "${cleanFrom}" itself as a transit stop.
-- The "via" string is what the user will READ AND FOLLOW on the street. Write it like turn-by-turn:
-  "Walk 600m south to [Real Station Name] → Board [Line Name] towards [Terminal] → 4 stops → Alight [Station] → Walk 350m east to destination"
-- Include approximate walking distances (in meters) and directions (north/south/towards landmark).
-- Bus routes: list actual route numbers like "216D, 219K, 5K" not generic descriptions.
-- Fares must be realistic for ${city.name} (not London fares for Hyderabad, etc).
-- If a mode is not available or practical, replace it with a meaningful alternative (e.g. shared auto, metro feeder bus, e-rickshaw).
-
-Return ONLY a raw JSON array. No markdown, no explanation, no extra text:
-[{"id":"1","icon":"🚇","label":"Metro (Walk)","via":"Walk 600m to [Station] → [Line] towards [Terminal] → Alight [Station] → Walk 350m","time":28,"fare":40,"crowd":65,"reliability":92,"delay":0,"co2":0.9,"tip":"Check HMRL/DMRC/TfL app for live platform. Times are AI estimates — verify before travel."}]`;
-
-  const resp=await fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","x-api-key":apiKey,
-      "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-    body:JSON.stringify({model:MODEL_ID,max_tokens:1800,messages:[{role:"user",content:prompt}]})
-  });
-  if(resp.status===401||resp.status===403) throw new Error("AUTH_FAILED");
-  if(!resp.ok) throw new Error(`API ${resp.status}`);
-  const data=await resp.json();
-  const txt=data.content.map(x=>x.text||"").join("").replace(/```json|```/g,"").trim();
-  const routes=JSON.parse(txt);
-  const usedTokens=(data.usage?.input_tokens||0)+(data.usage?.output_tokens||0);
-  ROUTE_CACHE[key]={routes,ts:Date.now(),tokens:usedTokens};
-  try{localStorage.setItem(ROUTE_CACHE_KEY,JSON.stringify(ROUTE_CACHE));}catch{}
-  onInfo({cached:false,tokens:usedTokens,savedTokens:0});
-  return routes;
 }
 
 // ─── NAVIGATE TAB ─────────────────────────────────────────────────────────────
@@ -721,37 +993,28 @@ function NavigateTab({city}){
   const [err,setErr]=useState("");
 
   async function detect(){
-    setPhase("locating");setErr("");
+    setPhase("locating"); setErr("");
     try{
       const pos=await getLocation();
       const all=STATION_COORDS[city.code]||[];
       const sorted=all.map(s=>({...s,d:haversineKm(pos.lat,pos.lng,s.lat,s.lng)}))
         .sort((a,b)=>a.d-b.d).slice(0,5);
-      setStations(sorted);setPhase("results");
-    }catch(e){
-      setErr("Could not get location. Allow GPS in Settings > Safari.");
-      setPhase("error");
-    }
+      setStations(sorted); setPhase("results");
+    }catch(e){ setErr("Could not get location. Allow GPS in Settings > Safari."); setPhase("error"); }
   }
 
   if(phase==="idle") return(
     <div style={{textAlign:"center",padding:"40px 0"}}>
       <div style={{fontSize:48,marginBottom:16}}>🧭</div>
       <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}}>Nearest Stations</div>
-      <div style={{fontSize:12,color:C.muted,marginBottom:24,lineHeight:1.6}}>
-        Find metro and bus stops near your current location
-      </div>
-      <button onClick={detect}
-        style={{background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",
-          borderRadius:14,padding:"14px 28px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#000"}}>
+      <div style={{fontSize:12,color:C.muted,marginBottom:24,lineHeight:1.6}}>Find metro stations closest to your current GPS location</div>
+      <button onClick={detect} style={{background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",borderRadius:14,padding:"14px 28px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#000"}}>
         📍 Detect My Location
       </button>
       <div style={{marginTop:16}}>
         <a href="https://www.google.com/maps/search/metro+station+near+me/" target="_blank"
-          style={{display:"inline-block",background:"rgba(26,115,232,0.12)",
-            border:"1px solid rgba(26,115,232,0.3)",borderRadius:10,
-            padding:"10px 18px",color:"#4285F4",fontSize:12,textDecoration:"none",fontWeight:600}}>
-          🗺️ Open Google Maps
+          style={{display:"inline-block",background:"rgba(26,115,232,0.12)",border:"1px solid rgba(26,115,232,0.3)",borderRadius:10,padding:"10px 18px",color:"#4285F4",fontSize:12,textDecoration:"none",fontWeight:600}}>
+          🗺️ Open in Google Maps
         </a>
       </div>
     </div>
@@ -768,26 +1031,19 @@ function NavigateTab({city}){
     <div style={{textAlign:"center",padding:"40px 0"}}>
       <div style={{fontSize:40,marginBottom:14}}>❌</div>
       <div style={{fontSize:13,color:C.textDim,lineHeight:1.6,marginBottom:20}}>{err}</div>
-      <button onClick={()=>setPhase("idle")}
-        style={{background:`${ACC}22`,border:`1px solid ${ACC}55`,borderRadius:10,
-          padding:"10px 20px",cursor:"pointer",color:ACC,fontSize:13,fontWeight:600}}>
-        Try Again
-      </button>
+      <button onClick={()=>setPhase("idle")} style={{background:`${ACC}22`,border:`1px solid ${ACC}55`,borderRadius:10,padding:"10px 20px",cursor:"pointer",color:ACC,fontSize:13,fontWeight:600}}>Try Again</button>
     </div>
   );
 
   return(
     <div>
-      <div style={{fontSize:11,color:C.textDim,marginBottom:12}}>
-        Nearest stations in <strong style={{color:C.text}}>{city.name}</strong>
-      </div>
+      <div style={{fontSize:11,color:C.textDim,marginBottom:12}}>Nearest metro stations · <strong style={{color:C.text}}>{city.name}</strong></div>
       {stations.map((s,i)=>(
-        <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,
-          borderRadius:13,padding:"13px 14px",marginBottom:9}}>
+        <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"13px 14px",marginBottom:9}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
             <div>
               <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.n}</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.line} · {(s.d*1000).toFixed(0)}m</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.line} · {(s.d*1000).toFixed(0)}m away</div>
             </div>
             <div style={{fontSize:10,background:`${ACC}20`,color:ACC,borderRadius:6,padding:"3px 8px",fontWeight:600}}>
               {s.d<1?(s.d*1000).toFixed(0)+"m":s.d.toFixed(1)+"km"}
@@ -795,48 +1051,62 @@ function NavigateTab({city}){
           </div>
           <div style={{display:"flex",gap:8}}>
             <a href={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(s.n+" station "+city.name)}/data=!4m2!4m1!3e2`}
-              target="_blank"
-              style={{flex:1,background:"rgba(0,212,170,0.1)",border:"1px solid rgba(0,212,170,0.25)",
-                borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",
-                color:C.emerald,fontSize:11,fontWeight:600}}>
+              target="_blank" style={{flex:1,background:"rgba(0,212,170,0.1)",border:"1px solid rgba(0,212,170,0.25)",borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",color:C.emerald,fontSize:11,fontWeight:600}}>
               🚶 Walk
             </a>
             <a href={`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(s.n+" station "+city.name)}/data=!4m2!4m1!3e0`}
-              target="_blank"
-              style={{flex:1,background:"rgba(79,195,247,0.1)",border:"1px solid rgba(79,195,247,0.25)",
-                borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",
-                color:C.sky,fontSize:11,fontWeight:600}}>
+              target="_blank" style={{flex:1,background:"rgba(79,195,247,0.1)",border:"1px solid rgba(79,195,247,0.25)",borderRadius:9,padding:"9px 6px",textAlign:"center",textDecoration:"none",color:C.sky,fontSize:11,fontWeight:600}}>
               🚗 Drive
             </a>
           </div>
         </div>
       ))}
-      <button onClick={()=>{setPhase("idle");setStations([]);}}
-        style={{width:"100%",marginTop:6,background:"transparent",border:`1px solid ${C.border}`,
-          borderRadius:10,padding:"10px",cursor:"pointer",color:C.muted,fontSize:12}}>
+      <button onClick={()=>{setPhase("idle");setStations([]);}} style={{width:"100%",marginTop:6,background:"transparent",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px",cursor:"pointer",color:C.muted,fontSize:12}}>
         ↩ Search Again
       </button>
     </div>
   );
 }
 
+// ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return {err:e};}
+  componentDidCatch(e,i){console.error("Tranzit:",e,i);}
+  render(){
+    if(this.state.err) return React.createElement('div',
+      {style:{minHeight:"100vh",background:"#0A0A0F",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"sans-serif",color:"#fff",textAlign:"center"}},
+      React.createElement('div',{style:{fontSize:40,marginBottom:16}},"⚠️"),
+      React.createElement('div',{style:{fontSize:15,fontWeight:700,marginBottom:8}},"App Error"),
+      React.createElement('div',{style:{fontSize:11,color:"rgba(255,255,255,0.5)",marginBottom:24}},String(this.state.err?.message||this.state.err)),
+      React.createElement('button',{onClick:()=>window.location.reload(),style:{background:"#FF6B1A",border:"none",borderRadius:10,padding:"12px 24px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#000"}},"Reload")
+    );
+    return this.props.children;
+  }
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function TranzitApp(){
+  // City
   const [cityKey,setCityKey]=useState("hyderabad");
   const city=BUILTIN_CITIES[cityKey]||BUILTIN_CITIES["hyderabad"];
 
+  // Tabs
   const [tab,setTab]=useState("plan");
-  const TABS=[
-    {id:"plan",icon:"🌐",label:"Route AI"},
-    {id:"navigate",icon:"🧭",label:"Navigate"},
-    {id:"live",icon:"📡",label:"Live Intel"},
-    {id:"crowd",icon:"👥",label:"Crowd"},
-    {id:"rides",icon:"🚕",label:"Ride Hub"},
-  ];
+  const TABS=[{id:"plan",icon:"🌐",label:"Route AI"},{id:"navigate",icon:"🧭",label:"Navigate"},{id:"live",icon:"📡",label:"Live Intel"},{id:"crowd",icon:"👥",label:"Crowd"},{id:"rides",icon:"🚕",label:"Ride Hub"}];
+
+  // Keys
+  const [anthropicKey,setAnthropicKey]=useState(()=>localStorage.getItem(ANTHROPIC_KEY_STORE)||"");
+  const [gmapsKey,setGmapsKey]=useState(()=>localStorage.getItem(GMAPS_KEY_STORE)||"");
+  const [showKeys,setShowKeys]=useState(false);
+  const [keyAI,setKeyAI]=useState("");
+  const [keyGM,setKeyGM]=useState("");
+  const [keyErr,setKeyErr]=useState("");
 
   // Route AI
   const [from,setFrom]=useState("");
   const [to,setTo]=useState("");
+  const [fromCoords,setFromCoords]=useState(null);
   const [fromSug,setFromSug]=useState([]);
   const [toSug,setToSug]=useState([]);
   const [fromFocus,setFromFocus]=useState(false);
@@ -844,6 +1114,7 @@ function TranzitApp(){
   const [gpsLoad,setGpsLoad]=useState(false);
   const [routes,setRoutes]=useState([]);
   const [loading,setLoading]=useState(false);
+  const [loadMsg,setLoadMsg]=useState("");
   const [aiErr,setAiErr]=useState("");
   const [searched,setSearched]=useState(false);
   const [sel,setSel]=useState(-1);
@@ -851,12 +1122,6 @@ function TranzitApp(){
   const [sessionTokens,setSessionTokens]=useState(0);
   const [savedTokens,setSavedTokens]=useState(0);
   const acRef=useRef(null);
-
-  // API key
-  const [apiKey,setApiKey]=useState(()=>localStorage.getItem(API_KEY_STORAGE)||"");
-  const [showKey,setShowKey]=useState(false);
-  const [keyVal,setKeyVal]=useState("");
-  const [keyErr,setKeyErr]=useState("");
 
   // Modals
   const [shareOpen,setShareOpen]=useState(false);
@@ -868,29 +1133,28 @@ function TranzitApp(){
   // SOS
   const [sosPhase,setSosPhase]=useState("idle");
   const [sosCD,setSosCD]=useState(5);
-  const [sosSettings,setSosSettings]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem(SOS_KEY)||"{}")}catch{return {}}
-  });
+  const [sosSettings,setSosSettings]=useState(()=>{try{return JSON.parse(localStorage.getItem(SOS_KEY)||"{}")}catch{return {}}});
   const [sosSetup,setSosSetup]=useState(false);
   const sosRef=useRef(null);
   useEffect(()=>()=>clearInterval(sosRef.current),[]);
 
   // Time
-  const [time,setTime]=useState(new Date());
-  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),10000);return ()=>clearInterval(t);},[]);
-  // Re-compute city time on every render using city.tz
+  const [tick,setTick]=useState(0);
+  useEffect(()=>{const t=setInterval(()=>setTick(n=>n+1),10000);return()=>clearInterval(t);},[]);
   const cityTimeStr=new Date().toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});
 
   // Helpers
-  const fmtFare=v=>Number.isInteger(+v)?String(Math.round(+v)):(+v).toFixed(2);
+  const fmtFare=v=>Number.isInteger(+v)?String(Math.round(+v)):(+v).toFixed(0);
   const crowdCol=v=>v>=80?"#FF4466":v>=50?"#F5A623":C.emerald;
   const isRide=r=>/cab|uber|ola|taxi|auto|rapido/i.test(r.label||"");
-  const fmtTime=d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});
   const emg=SOS_NUMS[city.country]||"112";
   const statusCol=s=>s==="Normal"?C.emerald:s==="Delayed"?"#F5A623":"#FF4466";
-  const urgCol=m=>m<=2?"#FF4466":m<=5?"#F5A623":C.emerald;
+  const fmtDepTime=m=>{const d=new Date(Date.now()+m*60000);return d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});};
 
-  // AC
+  const hasGMaps = !!gmapsKey;
+  const hasAI    = !!anthropicKey;
+
+  // Autocomplete
   function triggerAC(val,field){
     clearTimeout(acRef.current);
     if(val.length<3){field==="from"?setFromSug([]):setToSug([]);return;}
@@ -905,158 +1169,183 @@ function TranzitApp(){
     try{
       const p=await getLocation();
       const label=await reverseGeocode(p.lat,p.lng).catch(()=>`${p.lat},${p.lng}`);
-      setFrom("📍 "+label);setRoutes([]);setSearched(false);
-    }catch{setFrom("📍 My current location");}
+      setFrom("📍 "+label);
+      setFromCoords({lat:p.lat,lng:p.lng});
+      setRoutes([]);setSearched(false);
+    }catch{setFrom("📍 My current location");setFromCoords(null);}
     setGpsLoad(false);
   }
 
   // Find routes
   async function findRoutes(){
-    if(!apiKey){setShowKey(true);return;}
+    if(!hasGMaps&&!hasAI){setShowKeys(true);return;}
     if(!from.trim()||!to.trim()){setAiErr("Enter both From and To.");return;}
     setLoading(true);setAiErr("");setRoutes([]);setSearched(false);setSel(-1);
+
+    if(hasGMaps){
+      setLoadMsg("🗺️ Fetching real routes from Google Maps…");
+    } else {
+      setLoadMsg("🤖 Generating AI route estimates…");
+    }
+
     try{
-      const r=await fetchRoutes(city,from,to,apiKey,info=>{
+      const r=await fetchRoutes(city,from,to,gmapsKey,anthropicKey,fromCoords,info=>{
         setCacheInfo(info);
         if(info.tokens>0) setSessionTokens(t=>t+info.tokens);
         if(info.savedTokens>0) setSavedTokens(t=>t+info.savedTokens);
+        if(hasGMaps&&hasAI&&!info.cached) setLoadMsg("🤖 Adding AI intelligence layer…");
       });
       setRoutes(r||[]);setSearched(true);
     }catch(e){
       if(e.message==="AUTH_FAILED"){
-        setAiErr("Invalid API key.");localStorage.removeItem(API_KEY_STORAGE);setApiKey("");
-      }else setAiErr(`Error: ${e.message}`);
+        setAiErr("Invalid API key. Tap 🔑 Keys to update.");
+        localStorage.removeItem(ANTHROPIC_KEY_STORE);setAnthropicKey("");
+      } else {
+        setAiErr(e.message||"Failed to find routes.");
+      }
     }
-    setLoading(false);
+    setLoading(false);setLoadMsg("");
   }
 
-  // Key
-  function saveKey(){
-    const k=keyVal.trim();
-    if(!k.startsWith("sk-ant-")){setKeyErr("Must start with sk-ant-");return;}
-    localStorage.setItem(API_KEY_STORAGE,k);
-    setApiKey(k);setShowKey(false);setKeyVal("");setKeyErr("");
+  // Save keys
+  function saveKeys(){
+    const ai=keyAI.trim(), gm=keyGM.trim();
+    if(ai&&!ai.startsWith("sk-ant-")){setKeyErr("Anthropic key must start with sk-ant-");return;}
+    if(gm&&gm.length<20){setKeyErr("Google Maps key looks too short");return;}
+    if(ai){localStorage.setItem(ANTHROPIC_KEY_STORE,ai);setAnthropicKey(ai);}
+    if(gm){localStorage.setItem(GMAPS_KEY_STORE,gm);setGmapsKey(gm);_gmapsReady=false;_gmapsPromise=null;}
+    setShowKeys(false);setKeyAI("");setKeyGM("");setKeyErr("");
+  }
+
+  function clearKey(type){
+    if(type==='ai'){localStorage.removeItem(ANTHROPIC_KEY_STORE);setAnthropicKey("");}
+    else{localStorage.removeItem(GMAPS_KEY_STORE);setGmapsKey("");_gmapsReady=false;_gmapsPromise=null;}
   }
 
   // SOS
   function startSos(){
     setSosPhase("countdown");setSosCD(5);
-    sosRef.current=setInterval(()=>{
-      setSosCD(n=>{
-        if(n<=1){clearInterval(sosRef.current);fireSos();return 0;}
-        return n-1;
-      });
-    },1000);
+    sosRef.current=setInterval(()=>setSosCD(n=>{
+      if(n<=1){clearInterval(sosRef.current);fireSos();return 0;}return n-1;
+    }),1000);
   }
   function cancelSos(){clearInterval(sosRef.current);setSosPhase("idle");setSosCD(5);}
   async function fireSos(){
     setSosPhase("sent");
     let gps="";
     try{const p=await getLocation();gps="\n📍 https://maps.google.com/?q="+p.lat+","+p.lng;}catch{}
-    const msg="🆘 SOS! I need help. Emergency: "+emg+gps+"\nSent from Tranzit";
+    const msg="🆘 SOS! I need help.\nEmergency: "+emg+gps+"\nSent from Tranzit";
     (sosSettings.contacts||[]).forEach(c=>{
-      if(c&&c.phone) window.open("https://wa.me/"+c.phone.replace(/\D/g,"")+"?text="+encodeURIComponent(msg),"_blank");
+      if(c?.phone) window.open("https://wa.me/"+c.phone.replace(/\D/g,"")+"?text="+encodeURIComponent(msg),"_blank");
     });
   }
 
   return(
-    <div style={{minHeight:"100vh",background:C.bg,color:C.text,
-      fontFamily:"'DM Sans',sans-serif",paddingBottom:140,
-      backgroundImage:`radial-gradient(ellipse at 18% 0%,${ACC}0E 0%,transparent 55%)`}}>
+    <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans',sans-serif",paddingBottom:150,backgroundImage:`radial-gradient(ellipse at 18% 0%,${ACC}0E 0%,transparent 55%)`}}>
 
-      {/* HEADER */}
-      <div style={{padding:"16px 16px 12px",borderBottom:`1px solid ${C.border}`,
-        display:"flex",alignItems:"center",justifyContent:"space-between",
-        background:"rgba(10,10,15,0.95)",backdropFilter:"blur(12px)",
-        position:"sticky",top:0,zIndex:100}}>
-        <button onClick={()=>setCityModal(true)}
-          style={{background:`${ACC}15`,border:`1px solid ${ACC}30`,borderRadius:10,
-            padding:"6px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+      {/* ── HEADER ── */}
+      <div style={{padding:"14px 16px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,10,15,0.95)",backdropFilter:"blur(12px)",position:"sticky",top:0,zIndex:100}}>
+        <button onClick={()=>setCityModal(true)} style={{background:`${ACC}15`,border:`1px solid ${ACC}30`,borderRadius:10,padding:"6px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:14}}>{city.flag||"🌐"}</span>
           <span style={{fontWeight:700,fontSize:13,color:C.text}}>{city.name}</span>
           <span style={{fontSize:10,color:C.muted}}>▾</span>
         </button>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.muted}}>{cityTimeStr}</span>
-          <button onClick={()=>setShowKey(!showKey)}
-            style={{background:apiKey?`${C.emerald}15`:"rgba(255,68,102,0.12)",
-              border:`1px solid ${apiKey?C.emerald+"44":"rgba(255,68,102,0.3)"}`,
+          <button onClick={()=>{setShowKeys(!showKeys);setKeyAI("");setKeyGM("");setKeyErr("");}}
+            style={{background:hasGMaps&&hasAI?"rgba(0,212,170,0.12)":hasGMaps||hasAI?`${ACC}15`:"rgba(255,68,102,0.12)",
+              border:`1px solid ${hasGMaps&&hasAI?"rgba(0,212,170,0.4)":hasGMaps||hasAI?ACC+"44":"rgba(255,68,102,0.3)"}`,
               borderRadius:8,padding:"5px 10px",cursor:"pointer",
-              fontSize:11,color:apiKey?C.emerald:C.crimson,fontWeight:600}}>
-            {apiKey?"🔑 Key":"⚠️ No Key"}
+              fontSize:11,color:hasGMaps&&hasAI?C.emerald:hasGMaps||hasAI?ACC:C.crimson,fontWeight:600}}>
+            {hasGMaps&&hasAI?"🔑 Ready":hasGMaps?"🗺️ Maps only":hasAI?"🤖 AI only":"⚠️ Setup Keys"}
           </button>
         </div>
       </div>
 
-      {/* KEY PANEL */}
-      {showKey&&(
-        <div className="fade-in" style={{margin:"10px 16px 0",padding:"14px",
-          background:C.surface,border:`1px solid ${C.border}`,borderRadius:12}}>
-          <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:8}}>🔑 Anthropic API Key</div>
-          <input value={keyVal} onChange={e=>setKeyVal(e.target.value)}
-            placeholder="sk-ant-..." type="password"
-            style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,
-              borderRadius:8,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",
-              boxSizing:"border-box",marginBottom:8}}/>
-          {keyErr&&<div style={{fontSize:11,color:C.crimson,marginBottom:8}}>{keyErr}</div>}
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={saveKey}
-              style={{flex:1,background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",
-                borderRadius:8,padding:"9px",cursor:"pointer",fontWeight:700,fontSize:12,color:"#000"}}>
-              Save
-            </button>
-            <button onClick={()=>{setShowKey(false);setKeyVal("");}}
-              style={{flex:1,background:"transparent",border:`1px solid ${C.border}`,
-                borderRadius:8,padding:"9px",cursor:"pointer",fontSize:12,color:C.muted}}>
-              Cancel
-            </button>
+      {/* ── KEY SETUP PANEL ── */}
+      {showKeys&&(
+        <div className="fade-in" style={{margin:"10px 16px 0",padding:"16px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:13}}>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.1em",color:ACC,marginBottom:14}}>API KEYS SETUP</div>
+
+          {/* Google Maps Key */}
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div>
+                <span style={{fontSize:12,fontWeight:700,color:C.text}}>🗺️ Google Maps API</span>
+                <span style={{fontSize:10,color:C.emerald,marginLeft:8}}>Accurate real routes</span>
+              </div>
+              {gmapsKey&&<button onClick={()=>clearKey('gm')} style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontSize:10,color:C.crimson}}>Remove</button>}
+            </div>
+            {gmapsKey
+              ? <div style={{fontSize:11,color:C.emerald,padding:"7px 10px",background:"rgba(0,212,170,0.08)",borderRadius:7}}>✓ Connected · {gmapsKey.slice(0,12)}…</div>
+              : <input value={keyGM} onChange={e=>setKeyGM(e.target.value)} placeholder="AIza..." type="password"
+                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+            }
+            <div style={{fontSize:9,color:C.muted,marginTop:4}}>Get at <span style={{color:ACC}}>console.cloud.google.com</span> → APIs → Directions API + Maps JS API</div>
           </div>
-          <div style={{fontSize:10,color:C.muted,marginTop:8,lineHeight:1.5}}>
-            Get your key at <span style={{color:ACC}}>console.anthropic.com</span> · Stored on your device only
+
+          {/* Anthropic Key */}
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div>
+                <span style={{fontSize:12,fontWeight:700,color:C.text}}>🤖 Anthropic API</span>
+                <span style={{fontSize:10,color:C.textDim,marginLeft:8}}>AI tips layer</span>
+              </div>
+              {anthropicKey&&<button onClick={()=>clearKey('ai')} style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontSize:10,color:C.crimson}}>Remove</button>}
+            </div>
+            {anthropicKey
+              ? <div style={{fontSize:11,color:C.emerald,padding:"7px 10px",background:"rgba(0,212,170,0.08)",borderRadius:7}}>✓ Connected · {anthropicKey.slice(0,12)}…</div>
+              : <input value={keyAI} onChange={e=>setKeyAI(e.target.value)} placeholder="sk-ant-..." type="password"
+                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+            }
+            <div style={{fontSize:9,color:C.muted,marginTop:4}}>Get at <span style={{color:ACC}}>console.anthropic.com</span> · Optional — adds AI tips to routes</div>
+          </div>
+
+          {keyErr&&<div style={{fontSize:11,color:C.crimson,marginBottom:8}}>{keyErr}</div>}
+
+          <div style={{background:`${ACC}10`,border:`1px solid ${ACC}25`,borderRadius:8,padding:"8px 10px",marginBottom:12}}>
+            <div style={{fontSize:10,color:C.textDim,lineHeight:1.6}}>
+              🌟 <strong style={{color:ACC}}>Best experience:</strong> Both keys → Google Maps accuracy + Claude intelligence<br/>
+              🗺️ <strong>Google only:</strong> Real routes, no AI tips<br/>
+              🤖 <strong>Claude only:</strong> AI estimates (less accurate, use with caution)<br/>
+              Keys are stored only on your device.
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={saveKeys} style={{flex:1,background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",borderRadius:8,padding:"10px",cursor:"pointer",fontWeight:700,fontSize:12,color:"#000"}}>Save Keys</button>
+            <button onClick={()=>setShowKeys(false)} style={{flex:1,background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px",cursor:"pointer",fontSize:12,color:C.muted}}>Cancel</button>
           </div>
         </div>
       )}
 
-      {/* CITY MODAL */}
+      {/* ── CITY MODAL ── */}
       {cityModal&&(
-        <div onClick={()=>setCityModal(false)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,
-            display:"flex",alignItems:"flex-end",backdropFilter:"blur(4px)"}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",
-              border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"80vh",overflowY:"auto"}}>
+        <div onClick={()=>setCityModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(4px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"80vh",overflowY:"auto"}}>
             <div style={{textAlign:"center",marginBottom:16}}>
               <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 12px"}}/>
-              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:ACC}}>
-                SELECT CITY
-              </div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:ACC}}>SELECT CITY</div>
             </div>
             {Object.entries(BUILTIN_CITIES).map(([key,c])=>(
-              <button key={key}
-                onClick={()=>{setCityKey(key);setCityModal(false);setRoutes([]);setSearched(false);setFrom("");setTo("");}}
-                style={{width:"100%",background:key===cityKey?`${ACC}20`:C.surface,
-                  border:`1px solid ${key===cityKey?ACC+"66":C.border}`,
-                  borderRadius:10,padding:"11px 14px",cursor:"pointer",marginBottom:7,
-                  display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
+              <button key={key} onClick={()=>{setCityKey(key);setCityModal(false);setRoutes([]);setSearched(false);setFrom("");setTo("");setFromCoords(null);}}
+                style={{width:"100%",background:key===cityKey?`${ACC}20`:C.surface,border:`1px solid ${key===cityKey?ACC+"66":C.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",marginBottom:7,display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
                 <span style={{fontSize:20}}>{c.flag||"🌐"}</span>
                 <div>
                   <div style={{fontWeight:600,fontSize:13,color:C.text}}>{c.name}</div>
                   <div style={{fontSize:10,color:C.muted}}>{c.country} · {c.transitLabel}</div>
                 </div>
+                {key===cityKey&&<span style={{marginLeft:"auto",fontSize:12,color:ACC}}>✓</span>}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* RIDE MODAL */}
+      {/* ── RIDE MODAL ── */}
       {rideOpen&&(
-        <div onClick={()=>setRideOpen(false)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,
-            display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",
-              border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"85vh",overflowY:"auto"}}>
+        <div onClick={()=>setRideOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:`1px solid ${C.border}`,padding:"20px 16px 36px",maxHeight:"85vh",overflowY:"auto"}}>
             <div style={{textAlign:"center",marginBottom:16}}>
               <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 12px"}}/>
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:"0.1em",color:ACC}}>RIDE HUB</div>
@@ -1068,15 +1357,9 @@ function TranzitApp(){
                 let url=(app.url||"").replace("{dest}",d).replace("{DEST}",d);
                 if(!url||url===app.url) url="https://www.google.com/maps/search/"+encodeURIComponent(app.name);
                 window.open(url,"_blank");
-              }}
-                style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,
-                  borderRadius:10,padding:"11px 14px",cursor:"pointer",marginBottom:7,
-                  display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
+              }} style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",marginBottom:7,display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
                 <span style={{fontSize:24}}>{app.icon}</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:13,color:C.text}}>{app.name}</div>
-                  <div style={{fontSize:10,color:C.muted}}>{app.type||"Ride"}</div>
-                </div>
+                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:C.text}}>{app.name}</div><div style={{fontSize:10,color:C.muted}}>{app.type||"Ride"}</div></div>
                 <span style={{fontSize:11,color:ACC}}>Open →</span>
               </button>
             ))}
@@ -1084,14 +1367,10 @@ function TranzitApp(){
         </div>
       )}
 
-      {/* SHARE MODAL */}
+      {/* ── SHARE MODAL ── */}
       {shareOpen&&shareRoute&&(
-        <div onClick={()=>setShareOpen(false)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,
-            display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",
-              border:`1px solid ${C.border}`,padding:"20px 16px 36px"}}>
+        <div onClick={()=>setShareOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:`1px solid ${C.border}`,padding:"20px 16px 36px"}}>
             <div style={{textAlign:"center",marginBottom:14}}>
               <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 10px"}}/>
               <div style={{fontSize:16,fontWeight:700,color:C.text}}>📱 Share Journey</div>
@@ -1099,25 +1378,20 @@ function TranzitApp(){
             <div style={{background:`${ACC}12`,border:`1px solid ${ACC}30`,borderRadius:11,padding:"12px 14px",marginBottom:14}}>
               <div style={{fontSize:12,fontWeight:700,marginBottom:3}}>{from} → {to}</div>
               <div style={{fontSize:11,color:C.muted}}>{shareRoute.icon} {shareRoute.label} · {shareRoute.time} min · {city.currency}{fmtFare(shareRoute.fare)}</div>
+              {shareRoute.verified&&<div style={{fontSize:9,color:C.emerald,marginTop:4}}>🗺️ Data from Google Maps</div>}
             </div>
             {[
               {icon:"💬",label:"WhatsApp",color:"#25D366",go:async()=>{
-                let gps="";
-                try{const p=await getLocation();gps="\n📍 https://maps.google.com/?q="+p.lat+","+p.lng;}catch{}
-                const txt="🚇 On my way!\nFrom: "+from+"\nTo: "+to+"\nVia: "+shareRoute.via+"\nETA: "+shareRoute.time+" min"+gps+"\n\nSent via Tranzit 🌐";
+                let gps=""; try{const p=await getLocation();gps="\n📍 https://maps.google.com/?q="+p.lat+","+p.lng;}catch{}
+                const txt="🚇 On my way!\nFrom: "+from+"\nTo: "+to+"\n"+shareRoute.icon+" "+shareRoute.label+" via: "+shareRoute.via+"\nETA: "+shareRoute.time+" min"+gps+"\n\nSent via Tranzit 🌐";
                 window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");
               }},
               {icon:"📋",label:"Copy",color:C.sky,go:async()=>{
                 const txt="From: "+from+"\nTo: "+to+"\nRoute: "+shareRoute.label+"\nVia: "+shareRoute.via+"\nTime: "+shareRoute.time+" min | Fare: "+city.currency+fmtFare(shareRoute.fare);
-                await navigator.clipboard.writeText(txt).catch(()=>{});
-                setShareOpen(false);
+                await navigator.clipboard.writeText(txt).catch(()=>{});setShareOpen(false);
               }},
             ].map((btn,i)=>(
-              <button key={i} onClick={btn.go}
-                style={{width:"100%",background:`${btn.color}18`,border:`1px solid ${btn.color}44`,
-                  borderRadius:10,padding:"12px",cursor:"pointer",marginBottom:8,
-                  fontWeight:600,fontSize:13,color:btn.color,
-                  display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <button key={i} onClick={btn.go} style={{width:"100%",background:`${btn.color}18`,border:`1px solid ${btn.color}44`,borderRadius:10,padding:"12px",cursor:"pointer",marginBottom:8,fontWeight:600,fontSize:13,color:btn.color,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
                 {btn.icon} {btn.label}
               </button>
             ))}
@@ -1125,22 +1399,16 @@ function TranzitApp(){
         </div>
       )}
 
-      {/* SOS SETUP */}
+      {/* ── SOS SETUP ── */}
       {sosSetup&&(
-        <div onClick={()=>setSosSetup(false)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,
-            display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",
-              border:"1px solid rgba(255,68,102,0.3)",padding:"20px 16px 36px",
-              maxHeight:"88vh",overflowY:"auto"}}>
+        <div onClick={()=>setSosSetup(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(5px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"#13131D",borderRadius:"20px 20px 0 0",border:"1px solid rgba(255,68,102,0.3)",padding:"20px 16px 36px",maxHeight:"88vh",overflowY:"auto"}}>
             <div style={{textAlign:"center",marginBottom:16}}>
               <div style={{width:36,height:4,background:C.muted,borderRadius:2,margin:"0 auto 10px"}}/>
               <div style={{fontSize:22,marginBottom:4}}>🆘</div>
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:C.crimson}}>SOS SETUP</div>
             </div>
-            <div style={{background:"rgba(255,68,102,0.08)",border:"1px solid rgba(255,68,102,0.2)",
-              borderRadius:10,padding:"10px 13px",marginBottom:16,textAlign:"center"}}>
+            <div style={{background:"rgba(255,68,102,0.08)",border:"1px solid rgba(255,68,102,0.2)",borderRadius:10,padding:"10px 13px",marginBottom:16,textAlign:"center"}}>
               <div style={{fontSize:10,color:C.muted}}>LOCAL EMERGENCY</div>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:22,fontWeight:700,color:C.crimson}}>{emg}</div>
               <div style={{fontSize:10,color:C.muted}}>{city.name}</div>
@@ -1150,77 +1418,57 @@ function TranzitApp(){
               return(
                 <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px",marginBottom:9}}>
                   <div style={{fontSize:10,color:C.muted,marginBottom:8}}>Contact {i+1}{i===0?" (Primary)":""}</div>
-                  <input placeholder="Name" value={c.name||""}
-                    onChange={e=>{
-                      const arr=[...(sosSettings.contacts||[{},{},{}])];
-                      arr[i]={...c,name:e.target.value};
-                      const s={...sosSettings,contacts:arr};
-                      setSosSettings(s);localStorage.setItem(SOS_KEY,JSON.stringify(s));
-                    }}
+                  <input placeholder="Name" value={c.name||""} onChange={e=>{const arr=[...(sosSettings.contacts||[{},{},{}])];arr[i]={...c,name:e.target.value};const s={...sosSettings,contacts:arr};setSosSettings(s);localStorage.setItem(SOS_KEY,JSON.stringify(s));}}
                     style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",marginBottom:7,boxSizing:"border-box"}}/>
-                  <input placeholder="+91 99999 99999" value={c.phone||""}
-                    onChange={e=>{
-                      const arr=[...(sosSettings.contacts||[{},{},{}])];
-                      arr[i]={...c,phone:e.target.value};
-                      const s={...sosSettings,contacts:arr};
-                      setSosSettings(s);localStorage.setItem(SOS_KEY,JSON.stringify(s));
-                    }}
+                  <input placeholder="+91 99999 99999" value={c.phone||""} onChange={e=>{const arr=[...(sosSettings.contacts||[{},{},{}])];arr[i]={...c,phone:e.target.value};const s={...sosSettings,contacts:arr};setSosSettings(s);localStorage.setItem(SOS_KEY,JSON.stringify(s));}}
                     style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
                 </div>
               );
             })}
-            <button onClick={()=>setSosSetup(false)}
-              style={{width:"100%",background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",
-                borderRadius:10,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#000",marginTop:4}}>
+            <button onClick={()=>setSosSetup(false)} style={{width:"100%",background:`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",borderRadius:10,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#000",marginTop:4}}>
               ✓ Save &amp; Close
             </button>
           </div>
         </div>
       )}
 
-      {/* SOS COUNTDOWN */}
+      {/* ── SOS COUNTDOWN ── */}
       {sosPhase==="countdown"&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(200,0,30,0.93)",zIndex:300,
-          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(200,0,30,0.93)",zIndex:300,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
           <div style={{fontSize:72,fontWeight:900,color:"#fff",marginBottom:8}}>{sosCD}</div>
           <div style={{fontSize:18,color:"#fff",marginBottom:32}}>Sending SOS in {sosCD}s…</div>
-          <button onClick={cancelSos}
-            style={{background:"rgba(255,255,255,0.2)",border:"2px solid #fff",borderRadius:14,
-              padding:"14px 36px",cursor:"pointer",fontSize:16,fontWeight:700,color:"#fff"}}>
-            ✕ Cancel
-          </button>
+          <button onClick={cancelSos} style={{background:"rgba(255,255,255,0.2)",border:"2px solid #fff",borderRadius:14,padding:"14px 36px",cursor:"pointer",fontSize:16,fontWeight:700,color:"#fff"}}>✕ Cancel</button>
         </div>
       )}
 
-      {/* CONTENT */}
+      {/* ── CONTENT ── */}
       <div style={{padding:"14px 16px"}}>
 
-        {/* ROUTE AI TAB */}
+        {/* ROUTE AI */}
         {tab==="plan"&&(
           <div>
+            {/* FROM/TO CARD */}
             <div style={{background:C.surface,borderRadius:14,border:`1px solid ${C.border}`,padding:"13px 14px",marginBottom:10}}>
 
               {/* FROM */}
               <div style={{marginBottom:10,position:"relative"}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}>
-                  <span style={{color:C.emerald}}>●</span>&nbsp;FROM
-                </div>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.emerald}}>●</span>&nbsp;FROM</div>
                 <div style={{display:"flex",gap:7}}>
                   <input value={from}
-                    onChange={e=>{setFrom(e.target.value);triggerAC(e.target.value,"from");setRoutes([]);setSearched(false);}}
-                    onFocus={()=>setFromFocus(true)}
-                    onBlur={()=>setTimeout(()=>setFromFocus(false),200)}
+                    onChange={e=>{setFrom(e.target.value);setFromCoords(null);triggerAC(e.target.value,"from");setRoutes([]);setSearched(false);}}
+                    onFocus={()=>setFromFocus(true)} onBlur={()=>setTimeout(()=>setFromFocus(false),200)}
                     placeholder={`e.g. ${city.defaultFrom||"Your area"}, any address`}
                     style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
                   <button onClick={useGPS} disabled={gpsLoad}
-                    style={{flexShrink:0,background:from.startsWith("📍")?`${C.emerald}20`:`${ACC}15`,border:`1px solid ${from.startsWith("📍")?C.emerald:ACC+"44"}`,borderRadius:9,padding:"0 12px",cursor:"pointer",fontSize:18,color:from.startsWith("📍")?C.emerald:ACC}}>
+                    style={{flexShrink:0,background:fromCoords?`${C.emerald}20`:`${ACC}15`,border:`1px solid ${fromCoords?C.emerald:ACC+"44"}`,borderRadius:9,padding:"0 12px",cursor:"pointer",fontSize:18,color:fromCoords?C.emerald:ACC}}>
                     {gpsLoad?"⏳":"📍"}
                   </button>
                 </div>
+                {fromCoords&&<div style={{fontSize:9,color:C.emerald,marginTop:3}}>📍 Using GPS coordinates: {fromCoords.lat}, {fromCoords.lng}</div>}
                 {fromFocus&&fromSug.length>0&&(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,background:"#1A1A28",border:`1px solid ${ACC}44`,borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
                     {fromSug.map((s,i)=>(
-                      <div key={i} onMouseDown={()=>{setFrom(s);setFromSug([]);setRoutes([]);setSearched(false);}}
+                      <div key={i} onMouseDown={()=>{setFrom(s);setFromSug([]);setFromCoords(null);setRoutes([]);setSearched(false);}}
                         style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:i<fromSug.length-1?`1px solid ${C.border}`:"none",display:"flex",gap:8,alignItems:"center"}}>
                         <span style={{color:C.muted}}>📍</span><span>{s}</span>
                       </div>
@@ -1232,22 +1480,16 @@ function TranzitApp(){
               {/* SWAP */}
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                 <div style={{flex:1,height:1,background:C.border}}/>
-                <button onClick={()=>{const t=from;setFrom(to);setTo(t);setRoutes([]);setSearched(false);}}
-                  style={{background:`${ACC}20`,border:`1px solid ${ACC}50`,borderRadius:"50%",width:30,height:30,cursor:"pointer",color:ACC,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  ⇄
-                </button>
+                <button onClick={()=>{const t=from;setFrom(to);setTo(t);setFromCoords(null);setRoutes([]);setSearched(false);}} style={{background:`${ACC}20`,border:`1px solid ${ACC}50`,borderRadius:"50%",width:30,height:30,cursor:"pointer",color:ACC,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⇄</button>
                 <div style={{flex:1,height:1,background:C.border}}/>
               </div>
 
               {/* TO */}
               <div style={{position:"relative"}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}>
-                  <span style={{color:C.crimson}}>●</span>&nbsp;TO
-                </div>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.crimson}}>●</span>&nbsp;TO</div>
                 <input value={to}
                   onChange={e=>{setTo(e.target.value);triggerAC(e.target.value,"to");setRoutes([]);setSearched(false);}}
-                  onFocus={()=>setToFocus(true)}
-                  onBlur={()=>setTimeout(()=>setToFocus(false),200)}
+                  onFocus={()=>setToFocus(true)} onBlur={()=>setTimeout(()=>setToFocus(false),200)}
                   placeholder={`e.g. ${city.defaultTo||"Destination"}, any address`}
                   style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
                 {toFocus&&toSug.length>0&&(
@@ -1263,54 +1505,77 @@ function TranzitApp(){
               </div>
             </div>
 
-            {aiErr&&(
-              <div style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:10,padding:"10px 13px",marginBottom:10,fontSize:12,color:C.crimson}}>
-                ⚠️ {aiErr}
+            {/* Data source badge */}
+            {!loading&&!searched&&(
+              <div style={{marginBottom:10,display:"flex",gap:6,alignItems:"center"}}>
+                {hasGMaps
+                  ? <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(26,115,232,0.1)",border:"1px solid rgba(26,115,232,0.3)",borderRadius:7,padding:"4px 9px"}}>
+                      <span style={{fontSize:11}}>🗺️</span>
+                      <span style={{fontSize:10,color:"#4285F4",fontWeight:600}}>Powered by Google Maps — verified route data</span>
+                    </div>
+                  : <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(245,166,35,0.1)",border:"1px solid rgba(245,166,35,0.3)",borderRadius:7,padding:"4px 9px"}}>
+                      <span style={{fontSize:11}}>⚠️</span>
+                      <span style={{fontSize:10,color:"#F5A623",fontWeight:600}}>AI estimates only — add Google Maps key for accuracy</span>
+                    </div>
+                }
               </div>
             )}
 
+            {aiErr&&<div style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:10,padding:"10px 13px",marginBottom:10,fontSize:12,color:C.crimson}}>⚠️ {aiErr}</div>}
+
+            {/* Loading */}
             {loading&&(
               <div style={{textAlign:"center",padding:"40px 0"}}>
-                <div style={{fontSize:36,marginBottom:10,animation:"spin 1s linear infinite"}}>🌐</div>
-                <div style={{fontSize:13,color:C.textDim}}>AI finding your best routes…</div>
+                <div style={{fontSize:36,marginBottom:10,animation:"spin 1s linear infinite"}}>{hasGMaps?"🗺️":"🤖"}</div>
+                <div style={{fontSize:13,color:C.textDim,marginBottom:4}}>{loadMsg}</div>
+                <div style={{fontSize:10,color:C.muted}}>This may take 5-10 seconds…</div>
               </div>
             )}
 
+            {/* Results */}
             {searched&&!loading&&routes.length>0&&(
               <div>
-                {/* AI Disclaimer */}
-                <div style={{background:"rgba(245,166,35,0.08)",border:"1px solid rgba(245,166,35,0.25)",borderRadius:10,padding:"9px 12px",marginBottom:12,display:"flex",gap:8,alignItems:"flex-start"}}>
-                  <span style={{fontSize:14,flexShrink:0}}>🤖</span>
-                  <div style={{fontSize:10,color:"rgba(245,166,35,0.85)",lineHeight:1.55}}>
-                    <strong>AI-estimated routes</strong> — times and fares are approximate. Always verify on Google Maps or the transit app before travelling. Real-time data not connected.
-                  </div>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div style={{fontSize:12,color:C.textDim}}><strong style={{color:C.text}}>{routes.length} routes found</strong></div>
-                  {cacheInfo&&cacheInfo.cached&&(
-                    <div style={{fontSize:9,background:"rgba(0,212,170,0.15)",color:C.emerald,borderRadius:5,padding:"2px 7px"}}>
-                      ⚡ CACHED · {cacheInfo.age}
+                {/* Source banner */}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12,padding:"8px 11px",
+                  background:cacheInfo?.verified?"rgba(26,115,232,0.08)":"rgba(245,166,35,0.08)",
+                  border:`1px solid ${cacheInfo?.verified?"rgba(26,115,232,0.25)":"rgba(245,166,35,0.25)"}`,borderRadius:10}}>
+                  <span style={{fontSize:14}}>{cacheInfo?.verified?"🗺️":"🤖"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,fontWeight:600,color:cacheInfo?.verified?"#4285F4":"#F5A623"}}>
+                      {cacheInfo?.verified?"Google Maps data — routes are accurate and real-time":"AI estimates — approximate only, verify before travel"}
                     </div>
-                  )}
+                    <div style={{fontSize:9,color:C.muted,marginTop:1}}>
+                      {cacheInfo?.verified&&hasAI?" · AI tips added by Claude":""}
+                      {cacheInfo?.cached?` · Cached ${cacheInfo.age}`:""}
+                    </div>
+                  </div>
+                  {cacheInfo?.cached&&<div style={{fontSize:9,background:"rgba(0,212,170,0.15)",color:C.emerald,borderRadius:5,padding:"2px 7px",flexShrink:0}}>⚡ CACHED</div>}
                 </div>
+
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontSize:12,color:C.textDim}}><strong style={{color:C.text}}>{routes.length} routes</strong> · {from.replace(/^📍\s*/,"")} → {to}</div>
+                </div>
+
                 {routes.map((r,i)=>{
                   const isSelected=sel===i;
-                  const isBest=i===0;
-                  const cheap=routes.every((x,j)=>j===i||r.fare<=x.fare);
-                  const eco=routes.every((x,j)=>j===i||r.co2<=x.co2);
-                  const badge=isBest?{label:"⚡ FASTEST",bg:`${ACC}28`,col:ACC}
-                    :cheap?{label:"💰 CHEAPEST",bg:"rgba(0,212,170,0.18)",col:C.emerald}
-                    :eco?{label:"🌿 ECO",bg:"rgba(0,212,170,0.14)",col:C.emerald}
-                    :r.reliability>=90?{label:"🛡 RELIABLE",bg:"rgba(79,195,247,0.14)",col:C.sky}
-                    :null;
-                  const steps=(r.via||"").split(/→|➔/).map(s=>s.trim()).filter(Boolean);
+                  const isFastest=routes.reduce((f,x)=>x.time<f.time?x:f,routes[0])===r;
+                  const isCheapest=routes.reduce((f,x)=>x.fare<f.fare?x:f,routes[0])===r;
+                  const isEco=routes.reduce((f,x)=>x.co2<f.co2?x:f,routes[0])===r&&r.co2>0;
+                  const badge=isFastest?{label:"⚡ FASTEST",bg:`${ACC}28`,col:ACC}
+                    :isCheapest&&r.fare===0?null
+                    :isCheapest?{label:"💰 CHEAPEST",bg:"rgba(0,212,170,0.18)",col:C.emerald}
+                    :isEco&&r.co2<0.5?{label:"🌿 ECO",bg:"rgba(0,212,170,0.14)",col:C.emerald}
+                    :r.reliability>=90?{label:"🛡 RELIABLE",bg:"rgba(79,195,247,0.14)",col:C.sky}:null;
+                  const steps=(r.via||"").split(" → ").map(s=>s.trim()).filter(Boolean);
+
                   return(
-                    <div key={i} onClick={()=>setSel(isSelected?-1:i)}
+                    <div key={r.id||i} onClick={()=>setSel(isSelected?-1:i)}
                       style={{background:isSelected?`linear-gradient(135deg,${ACC}12,${ACCB}08)`:C.surface,
-                        border:`1.5px solid ${isSelected?ACC+"66":isBest?ACC+"25":C.border}`,
+                        border:`1.5px solid ${isSelected?ACC+"66":C.border}`,
                         borderRadius:16,marginBottom:12,overflow:"hidden",cursor:"pointer",
                         boxShadow:isSelected?`0 4px 20px ${ACC}20`:"none"}}>
-                      <div style={{padding:"14px 14px 10px"}}>
+                      <div style={{padding:"13px 14px 10px"}}>
+                        {/* Mode + time + fare */}
                         <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:10}}>
                           <div style={{width:44,height:44,borderRadius:12,flexShrink:0,
                             background:isSelected?`linear-gradient(135deg,${ACC},${ACCB})`:`${ACC}15`,
@@ -1320,8 +1585,12 @@ function TranzitApp(){
                           <div style={{flex:1}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
                               <span style={{fontWeight:700,fontSize:14,color:C.text}}>{r.label}</span>
+                              {/* Verified badge */}
+                              {r.verified
+                                ? <span style={{fontSize:8,background:"rgba(26,115,232,0.18)",color:"#4285F4",borderRadius:4,padding:"2px 6px",fontWeight:700}}>🗺️ LIVE</span>
+                                : <span style={{fontSize:8,background:"rgba(245,166,35,0.18)",color:"#F5A623",borderRadius:4,padding:"2px 6px",fontWeight:700}}>🤖 ESTIMATE</span>
+                              }
                               {badge&&<span style={{fontSize:9,fontWeight:700,background:badge.bg,color:badge.col,borderRadius:5,padding:"2px 7px"}}>{badge.label}</span>}
-                              {r.delay>0&&<span style={{fontSize:9,background:"rgba(255,68,102,0.14)",color:C.crimson,borderRadius:5,padding:"2px 6px"}}>+{r.delay}m</span>}
                             </div>
                             <div style={{display:"flex",gap:14,alignItems:"baseline"}}>
                               <div>
@@ -1329,44 +1598,52 @@ function TranzitApp(){
                                 <span style={{fontSize:11,color:C.muted,marginLeft:3}}>min</span>
                               </div>
                               <div style={{width:1,height:18,background:C.border}}/>
-                              <span style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:ACCB}}>{city.currency}{fmtFare(r.fare)}</span>
+                              <div>
+                                <span style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:ACCB}}>{r.fare===0?"Free":`${city.currency}${fmtFare(r.fare)}`}</span>
+                                {!r.fareVerified&&r.fare>0&&<span style={{fontSize:8,color:C.muted,marginLeft:3}}>est.</span>}
+                              </div>
                             </div>
+                            {r.meta&&<div style={{fontSize:10,color:C.muted,marginTop:2}}>{r.meta}</div>}
                           </div>
                         </div>
-                        {steps.length>0&&(
-                          <div style={{background:"rgba(0,0,0,0.2)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-                            <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>JOURNEY STEPS</div>
-                            {steps.map((step,si)=>(
-                              <div key={si} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:si<steps.length-1?6:0}}>
-                                <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
-                                  <div style={{width:8,height:8,borderRadius:"50%",background:si===0||si===steps.length-1?ACC:ACCB,marginTop:3}}/>
-                                  {si<steps.length-1&&<div style={{width:1,height:14,background:C.border,marginTop:2}}/>}
-                                </div>
-                                <div style={{fontSize:11,color:si===0||si===steps.length-1?C.text:C.textDim,fontWeight:si===0||si===steps.length-1?600:400,lineHeight:1.4}}>
-                                  {step}
-                                </div>
+
+                        {/* Journey steps */}
+                        <div style={{background:"rgba(0,0,0,0.25)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+                          <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:7}}>ROUTE STEPS</div>
+                          {steps.map((step,si)=>(
+                            <div key={si} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:si<steps.length-1?7:0}}>
+                              <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0,marginTop:3}}>
+                                <div style={{width:8,height:8,borderRadius:"50%",background:si===0||si===steps.length-1?ACC:ACCB}}/>
+                                {si<steps.length-1&&<div style={{width:1,height:16,background:`${C.border}`,marginTop:2}}/>}
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              <div style={{fontSize:11,color:si===0||si===steps.length-1?C.text:C.textDim,fontWeight:si===0||si===steps.length-1?600:400,lineHeight:1.45}}>
+                                {step}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Stats */}
                         <div style={{display:"flex",gap:6}}>
                           {[
                             {icon:"👥",label:"Crowd",val:`${r.crowd}%`,col:crowdCol(r.crowd)},
                             {icon:"🛡",label:"Reliable",val:`${r.reliability}%`,col:r.reliability>=80?C.emerald:"#F5A623"},
-                            {icon:"🌿",label:"CO₂",val:`${r.co2}kg`,col:C.emerald},
+                            {icon:"🌿",label:"CO₂",val:r.co2===0?"Zero":`${r.co2}kg`,col:C.emerald},
                           ].map(s=>(
                             <div key={s.label} style={{flex:1,background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 4px",textAlign:"center"}}>
                               <div style={{fontSize:11}}>{s.icon}</div>
-                              <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700,color:s.col}}>{s.val}</div>
+                              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:700,color:s.col}}>{s.val}</div>
                               <div style={{fontSize:8,color:C.muted}}>{s.label}</div>
                             </div>
                           ))}
                         </div>
                       </div>
+
+                      {/* Expanded */}
                       {isSelected&&(
                         <div style={{borderTop:`1px solid ${C.border}`,padding:"12px 14px",background:"rgba(0,0,0,0.15)"}}>
                           {r.tip&&(
-                            <div style={{background:"rgba(0,212,170,0.07)",border:"1px solid rgba(0,212,170,0.18)",borderRadius:9,padding:"9px 11px",marginBottom:10,display:"flex",gap:7}}>
+                            <div style={{background:`${hasGMaps?"rgba(26,115,232,0.07)":"rgba(245,166,35,0.07)"}`,border:`1px solid ${hasGMaps?"rgba(26,115,232,0.2)":"rgba(245,166,35,0.2)"}`,borderRadius:9,padding:"9px 11px",marginBottom:10,display:"flex",gap:7}}>
                               <span style={{flexShrink:0}}>🤖</span>
                               <div style={{fontSize:11,color:C.textDim,lineHeight:1.65}}>{r.tip}</div>
                             </div>
@@ -1382,7 +1659,7 @@ function TranzitApp(){
                               style={{flex:1,background:"rgba(79,195,247,0.1)",border:"1px solid rgba(79,195,247,0.3)",borderRadius:10,padding:"11px 8px",cursor:"pointer",fontWeight:600,fontSize:12,color:C.sky,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                               📱 Share
                             </button>
-                            <button onClick={e=>{e.stopPropagation();window.open(`https://www.google.com/maps/dir/My+Location/${encodeURIComponent(to)}`,"_blank");}}
+                            <button onClick={e=>{e.stopPropagation();window.open(`https://www.google.com/maps/dir/${encodeURIComponent(from.replace(/^📍\s*/,""))}/${encodeURIComponent(to)}`,"_blank");}}
                               style={{flex:1,background:"linear-gradient(135deg,#1A73E8,#4285F4)",border:"none",borderRadius:10,padding:"11px 8px",cursor:"pointer",fontWeight:600,fontSize:12,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                               🗺️ Maps
                             </button>
@@ -1391,7 +1668,7 @@ function TranzitApp(){
                       )}
                       {!isSelected&&(
                         <div style={{borderTop:"1px solid rgba(255,255,255,0.04)",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                          <span style={{fontSize:10,color:C.muted}}>Tap for tips &amp; actions</span>
+                          <span style={{fontSize:10,color:C.muted}}>Tap for tip &amp; actions</span>
                           <span style={{color:C.muted}}>›</span>
                         </div>
                       )}
@@ -1401,28 +1678,27 @@ function TranzitApp(){
               </div>
             )}
 
+            {/* Empty state */}
             {!loading&&!searched&&(
               <div style={{textAlign:"center",padding:"20px 0"}}>
-                <div style={{fontSize:52,marginBottom:14}}>🌐</div>
-                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:8}}>Plan your journey</div>
+                <div style={{fontSize:48,marginBottom:14}}>{hasGMaps?"🗺️":"🌐"}</div>
+                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:8}}>
+                  {hasGMaps?"Google Maps Route Intelligence":"Plan your journey"}
+                </div>
                 <div style={{fontSize:12,color:C.textDim,marginBottom:20,lineHeight:1.7}}>
-                  {apiKey?"Enter your start and end points to get AI-powered routes":"Add your Anthropic API key first"}
+                  {hasGMaps?"Enter any address — we'll fetch real verified routes from Google Maps"
+                    :hasAI?"AI route estimates active — add a Google Maps key for accuracy"
+                    :"Tap ⚠️ Setup Keys to get started"}
                 </div>
                 {[
-                  {n:"1",icon:"📍",t:"Tap 📍 for GPS or type any address"},
-                  {n:"2",icon:"🏁",t:"Enter your destination"},
-                  {n:"3",icon:"🚀",t:"Tap Find Routes for all options"},
-                  {n:"4",icon:"👆",t:"Tap a card for step-by-step directions"},
+                  {n:"1",icon:"📍",t:"Tap 📍 for GPS — sends your exact coordinates for precision"},
+                  {n:"2",icon:"🏁",t:"Type any address, landmark or place name as destination"},
+                  {n:"3",icon:"🚀",t:hasGMaps?"Find Routes — fetches real-time Google Maps data":"Find Routes — generates AI estimates"},
+                  {n:"4",icon:"👆",t:"Tap any card to see full steps, tips and actions"},
                 ].map(s=>(
-                  <div key={s.n} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:10,textAlign:"left",
-                    background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"11px 13px"}}>
-                    <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,
-                      background:`linear-gradient(135deg,${ACC},${ACCB})`,
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      fontWeight:700,fontSize:11,color:"#000"}}>{s.n}</div>
-                    <div style={{fontSize:11,color:C.textDim,lineHeight:1.6,paddingTop:3}}>
-                      {s.icon} {s.t}
-                    </div>
+                  <div key={s.n} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:10,textAlign:"left",background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"11px 13px"}}>
+                    <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,background:`linear-gradient(135deg,${ACC},${ACCB})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:11,color:"#000"}}>{s.n}</div>
+                    <div style={{fontSize:11,color:C.textDim,lineHeight:1.6,paddingTop:3}}>{s.icon} {s.t}</div>
                   </div>
                 ))}
               </div>
@@ -1438,36 +1714,29 @@ function TranzitApp(){
           <div>
             <div style={{fontSize:11,color:C.textDim,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
               <span style={{width:7,height:7,borderRadius:"50%",background:C.emerald,display:"inline-block",animation:"pulse 1.5s infinite"}}/>
-              Live feed · {city.transitLabel} · <span style={{color:C.emerald,fontFamily:"'DM Mono',monospace"}}>{cityTimeStr}</span> local time
+              Live feed · {city.transitLabel} · <span style={{color:C.emerald,fontFamily:"'DM Mono',monospace"}}>{cityTimeStr}</span>
+            </div>
+            <div style={{background:"rgba(245,166,35,0.08)",border:"1px solid rgba(245,166,35,0.2)",borderRadius:9,padding:"8px 11px",marginBottom:12,fontSize:10,color:"#F5A623",lineHeight:1.5}}>
+              ⚠️ Departure times are simulated for demonstration. For live schedules connect HMRL/TfL/MTA official APIs.
             </div>
             {(city.lines||[]).map((l,i)=>{
               const freq=l.freqMins||5;
               const delay=l.status==="Delayed"?Math.floor(Math.random()*5)+3:0;
-              const now=new Date();
-              const t1=freq+delay,t2=freq*2+delay,t3=freq*3;
-              const fmt=m=>{
-                const d=new Date(now.getTime()+m*60000);
-                return d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});
-              };
+              const t1=freq+delay, t2=freq*2+delay, t3=freq*3;
               const uc=m=>m<=2?"#FF4466":m<=5?"#F5A623":C.emerald;
               return(
                 <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13}}>{l.line}</div>
-                      <div style={{fontSize:10,color:C.muted}}>{l.route}</div>
-                    </div>
+                    <div><div style={{fontWeight:700,fontSize:13}}>{l.line}</div><div style={{fontSize:10,color:C.muted}}>{l.route}</div></div>
                     <div style={{fontSize:10,fontWeight:600,color:statusCol(l.status),display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{width:6,height:6,borderRadius:"50%",background:statusCol(l.status),display:"inline-block"}}/>
-                      {l.status}{delay>0?` +${delay}m`:""}
+                      <span style={{width:6,height:6,borderRadius:"50%",background:statusCol(l.status),display:"inline-block"}}/>{l.status}{delay>0?` +${delay}m`:""}
                     </div>
                   </div>
                   <div style={{display:"flex",gap:7}}>
                     {[{label:"Next",m:t1},{label:"Then",m:t2},{label:"After",m:t3}].map((t,j)=>(
-                      <div key={j} style={{flex:1,background:j===0?`${uc(t.m)}12`:"rgba(255,255,255,0.03)",
-                        border:`1px solid ${j===0?uc(t.m)+"44":C.border}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}>
+                      <div key={j} style={{flex:1,background:j===0?`${uc(t.m)}12`:"rgba(255,255,255,0.03)",border:`1px solid ${j===0?uc(t.m)+"44":C.border}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}>
                         <div style={{fontSize:9,color:C.muted,marginBottom:4}}>{t.label}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:j===0?uc(t.m):C.textDim}}>{fmt(t.m)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:j===0?uc(t.m):C.textDim}}>{fmtDepTime(t.m)}</div>
                         <div style={{fontSize:10,marginTop:2,color:j===0?uc(t.m):C.muted}}>{t.m}m</div>
                       </div>
                     ))}
@@ -1477,12 +1746,8 @@ function TranzitApp(){
               );
             })}
             {(city.alerts||[]).map((a,i)=>(
-              <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,
-                borderLeft:`3px solid ${a.type==="warn"?ACCB:a.type==="safe"?C.emerald:C.crimson}`,
-                borderRadius:11,padding:"11px 13px",marginBottom:9}}>
-                <div style={{fontSize:12,lineHeight:1.55}}>
-                  {a.type==="warn"?"⚠️":a.type==="safe"?"✅":"🚨"} {a.msg}
-                </div>
+              <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${a.type==="warn"?ACCB:a.type==="safe"?C.emerald:C.crimson}`,borderRadius:11,padding:"11px 13px",marginBottom:9}}>
+                <div style={{fontSize:12,lineHeight:1.55}}>{a.type==="warn"?"⚠️":a.type==="safe"?"✅":"🚨"} {a.msg}</div>
               </div>
             ))}
           </div>
@@ -1493,9 +1758,7 @@ function TranzitApp(){
           <div>
             <div style={{background:"rgba(245,166,35,0.1)",border:"1px solid rgba(245,166,35,0.3)",borderRadius:11,padding:"10px 13px",marginBottom:13,display:"flex",gap:9}}>
               <span style={{fontSize:16,flexShrink:0}}>⚠️</span>
-              <div style={{fontSize:11,color:C.textDim,lineHeight:1.6}}>
-                <strong style={{color:"#F5A623"}}>Sample data</strong> — live crowd figures will be added in the next build.
-              </div>
+              <div style={{fontSize:11,color:C.textDim,lineHeight:1.6}}><strong style={{color:"#F5A623"}}>Sample data</strong> — live crowd data from official transit APIs will be integrated in a future update.</div>
             </div>
             <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14}}>
               <div style={{fontSize:11,fontWeight:600,color:ACC,marginBottom:12,letterSpacing:"0.08em"}}>📍 STATION CROWD LEVELS</div>
@@ -1518,152 +1781,112 @@ function TranzitApp(){
         {/* RIDES */}
         {tab==="rides"&&(
           <div>
-            <div style={{fontSize:11,color:C.textDim,marginBottom:12}}>
-              Ride apps in <strong style={{color:C.text}}>{city.country}</strong>
-            </div>
+            <div style={{fontSize:11,color:C.textDim,marginBottom:12}}>Ride apps available in <strong style={{color:C.text}}>{city.country}</strong></div>
             {(RIDE_APPS[city.country]||RIDE_APPS["India"]||[]).slice(0,20).map((app,i)=>(
               <button key={i} onClick={()=>{
                 const dest=encodeURIComponent(to||city.name);
                 let url=(app.url||"").replace("{dest}",dest).replace("{DEST}",dest);
                 if(!url||url===app.url) url="https://www.google.com/maps/search/"+encodeURIComponent(app.name);
                 window.open(url,"_blank");
-              }}
-                style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 14px",cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
+              }} style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"12px 14px",cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
                 <span style={{fontSize:26}}>{app.icon}</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:13,color:C.text}}>{app.name}</div>
-                  <div style={{fontSize:10,color:C.muted}}>{app.type||"Ride"}</div>
-                </div>
+                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:C.text}}>{app.name}</div><div style={{fontSize:10,color:C.muted}}>{app.type||"Ride"}</div></div>
                 <span style={{fontSize:12,color:ACC,fontWeight:600}}>Open →</span>
               </button>
             ))}
           </div>
         )}
-
       </div>
 
-      {/* BOTTOM BAR */}
-      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,
-        background:"rgba(10,10,15,0.97)",backdropFilter:"blur(16px)",
-        borderTop:`1px solid ${C.border}`}}>
+      {/* ── BOTTOM BAR ── */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,background:"rgba(10,10,15,0.97)",backdropFilter:"blur(16px)",borderTop:`1px solid ${C.border}`}}>
+        {/* Token strip */}
         <div style={{padding:"5px 14px 4px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-          {/* Session tokens */}
           <div style={{display:"flex",alignItems:"center",gap:5}}>
             <span style={{fontSize:9,color:C.muted}}>⚡</span>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:700,color:ACC,lineHeight:1}}>{sessionTokens.toLocaleString()}</div>
-              <div style={{fontSize:7,color:C.muted,letterSpacing:"0.06em"}}>TOKENS</div>
-            </div>
+            <div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:700,color:ACC,lineHeight:1}}>{sessionTokens.toLocaleString()}</div><div style={{fontSize:7,color:C.muted,letterSpacing:"0.06em"}}>TOKENS</div></div>
           </div>
           <div style={{width:1,height:20,background:C.border}}/>
-          {/* Saved by cache */}
           <div style={{display:"flex",alignItems:"center",gap:5}}>
             <span style={{fontSize:9,color:C.emerald}}>🎯</span>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:700,color:C.emerald,lineHeight:1}}>{savedTokens>0?"+":""}{savedTokens.toLocaleString()}</div>
-              <div style={{fontSize:7,color:C.muted,letterSpacing:"0.06em"}}>SAVED</div>
-            </div>
+            <div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:700,color:C.emerald,lineHeight:1}}>{savedTokens>0?"+":""}{savedTokens.toLocaleString()}</div><div style={{fontSize:7,color:C.muted,letterSpacing:"0.06em"}}>SAVED</div></div>
           </div>
           <div style={{width:1,height:20,background:C.border}}/>
-          {/* Model */}
-          <div style={{display:"flex",alignItems:"center",gap:4,flex:1}}>
-            <div style={{width:5,height:5,borderRadius:"50%",background:C.emerald,flexShrink:0,animation:"pulse 2s infinite"}}/>
-            <span style={{fontSize:9,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🤖 {MODEL_ID}</span>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:4}}>
+            {hasGMaps&&<span style={{fontSize:8,background:"rgba(26,115,232,0.15)",color:"#4285F4",borderRadius:4,padding:"1px 5px",fontWeight:700}}>🗺️ GMAPS</span>}
+            {hasAI&&<span style={{fontSize:8,background:`${ACC}15`,color:ACC,borderRadius:4,padding:"1px 5px",fontWeight:700}}>🤖 AI</span>}
           </div>
-          {/* Clear cache */}
           {Object.keys(ROUTE_CACHE).length>0&&(
-            <button onClick={()=>{
-              Object.keys(ROUTE_CACHE).forEach(k=>delete ROUTE_CACHE[k]);
-              localStorage.removeItem(ROUTE_CACHE_KEY);
-              setSavedTokens(0);
-            }}
+            <button onClick={()=>{Object.keys(ROUTE_CACHE).forEach(k=>delete ROUTE_CACHE[k]);localStorage.removeItem(ROUTE_CACHE_KEY);setSavedTokens(0);}}
               style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",color:C.muted,fontSize:9,flexShrink:0}}>
               🗑 Cache
             </button>
           )}
         </div>
+
+        {/* SOS + Find Routes */}
         <div style={{display:"flex",gap:8,padding:"8px 14px 10px"}}>
           <div style={{display:"flex",gap:0,flexShrink:0}}>
             <button onClick={sosPhase==="idle"?startSos:()=>{}}
-              style={{background:sosPhase==="sent"?`linear-gradient(135deg,${C.crimson},#cc0033)`:"rgba(255,68,102,0.12)",
-                border:"1px solid rgba(255,68,102,0.4)",borderRadius:"10px 0 0 10px",
-                padding:"10px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:C.crimson}}>
+              style={{background:sosPhase==="sent"?`linear-gradient(135deg,${C.crimson},#cc0033)`:"rgba(255,68,102,0.12)",border:"1px solid rgba(255,68,102,0.4)",borderRadius:"10px 0 0 10px",padding:"10px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:C.crimson}}>
               🆘 SOS
             </button>
             <button onClick={()=>setSosSetup(true)}
-              style={{background:"rgba(255,68,102,0.06)",border:"1px solid rgba(255,68,102,0.3)",borderLeft:"none",borderRadius:"0 10px 10px 0",padding:"10px 8px",cursor:"pointer",fontSize:11,color:"rgba(255,68,102,0.6)"}}>
-              ⚙️
-            </button>
+              style={{background:"rgba(255,68,102,0.06)",border:"1px solid rgba(255,68,102,0.3)",borderLeft:"none",borderRadius:"0 10px 10px 0",padding:"10px 8px",cursor:"pointer",fontSize:11,color:"rgba(255,68,102,0.6)"}}>⚙️</button>
           </div>
           <button onClick={tab==="plan"?findRoutes:()=>setTab("plan")}
             disabled={tab==="plan"&&(loading||!from.trim()||!to.trim())}
             style={{flex:1,background:tab==="plan"&&(loading||!from.trim()||!to.trim())?"rgba(255,107,26,0.3)":`linear-gradient(135deg,${ACC},${ACCB})`,border:"none",borderRadius:10,padding:"10px",cursor:"pointer",fontWeight:700,fontSize:13,color:tab==="plan"&&(loading||!from.trim()||!to.trim())?"rgba(0,0,0,0.4)":"#000",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-            {tab==="plan"?loading?"⏳ Finding…":"🚀 Find Routes":"🚀 Route AI"}
+            {tab==="plan"?loading?"⏳ Fetching…":"🚀 Find Routes":"🚀 Route AI"}
           </button>
         </div>
+
+        {/* Tabs */}
         <div style={{display:"flex",borderTop:`1px solid ${C.border}`,paddingBottom:"env(safe-area-inset-bottom)"}}>
           {TABS.map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{flex:1,background:"transparent",border:"none",padding:"8px 4px 10px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
               <span style={{fontSize:18}}>{t.icon}</span>
-              <span style={{fontSize:8,fontWeight:600,color:tab===t.id?ACC:C.muted,letterSpacing:"0.04em"}}>
-                {t.label.toUpperCase()}
-              </span>
+              <span style={{fontSize:8,fontWeight:600,color:tab===t.id?ACC:C.muted,letterSpacing:"0.04em"}}>{t.label.toUpperCase()}</span>
               {tab===t.id&&<div style={{width:20,height:2,background:ACC,borderRadius:1}}/>}
             </button>
           ))}
         </div>
       </div>
-
     </div>
   );
 }
 
 function AppRoot(){
   const [seen,setSeen]=useState(()=>!!localStorage.getItem("tranzit_seen"));
+  const hasGMaps = !!localStorage.getItem(GMAPS_KEY_STORE);
+  const hasAI    = !!localStorage.getItem(ANTHROPIC_KEY_STORE);
+
   if(!seen) return(
-    <div style={{minHeight:"100vh",background:"#0A0A0F",display:"flex",flexDirection:"column",
-      alignItems:"center",justifyContent:"center",padding:"24px",
-      fontFamily:"'DM Sans',sans-serif",color:"#F0F0F5"}}>
+    <div style={{minHeight:"100vh",background:"#0A0A0F",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px",fontFamily:"'DM Sans',sans-serif",color:"#F0F0F5",textAlign:"center"}}>
       <div style={{fontSize:52,marginBottom:16}}>🌐</div>
-      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:40,letterSpacing:"0.1em",marginBottom:4,
-        background:"linear-gradient(135deg,#FF6B1A,#F5A623)",
-        WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRANZIT</div>
-      <div style={{fontSize:13,color:"rgba(240,240,245,0.6)",marginBottom:40,textAlign:"center",lineHeight:1.6}}>
-        Global Commute Intelligence · AI-Powered Routes
+      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:40,letterSpacing:"0.1em",marginBottom:4,background:"linear-gradient(135deg,#FF6B1A,#F5A623)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRANZIT</div>
+      <div style={{fontSize:13,color:"rgba(240,240,245,0.6)",marginBottom:10,lineHeight:1.6}}>Global Commute Intelligence</div>
+      <div style={{background:"rgba(26,115,232,0.12)",border:"1px solid rgba(26,115,232,0.3)",borderRadius:12,padding:"12px 16px",marginBottom:32,maxWidth:320,textAlign:"left"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#4285F4",marginBottom:8}}>🗺️ Powered by Google Maps</div>
+        <div style={{fontSize:11,color:"rgba(240,240,245,0.7)",lineHeight:1.65}}>
+          Real-time transit routes, walking directions, and accurate fares — not AI guesses.<br/>
+          Add a Google Maps API key to get started.
+        </div>
       </div>
       <button onClick={()=>{localStorage.setItem("tranzit_seen","1");setSeen(true);}}
-        style={{background:"linear-gradient(135deg,#FF6B1A,#F5A623)",border:"none",
-          borderRadius:14,padding:"16px 36px",cursor:"pointer",fontWeight:700,fontSize:15,color:"#000"}}>
+        style={{background:"linear-gradient(135deg,#FF6B1A,#F5A623)",border:"none",borderRadius:14,padding:"16px 36px",cursor:"pointer",fontWeight:700,fontSize:15,color:"#000",marginBottom:16}}>
         Get Started →
       </button>
-      <div style={{fontSize:10,color:"rgba(240,240,245,0.3)",marginTop:20,textAlign:"center"}}>
-        Designed by Krishnamurthy Kandregula · Built with Claude
-      </div>
+      <div style={{fontSize:10,color:"rgba(240,240,245,0.3)"}}>Designed by Krishnamurthy Kandregula · Built with Claude</div>
     </div>
   );
   return <TranzitApp/>;
 }
 
-
-class ErrorBoundary extends React.Component {
-  constructor(props){super(props);this.state={err:null};}
-  static getDerivedStateFromError(e){return {err:e};}
-  componentDidCatch(e,info){console.error("Tranzit Error:",e,info);}
-  render(){
-    if(this.state.err) return(
-      React.createElement('div',{style:{minHeight:"100vh",background:"#0A0A0F",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"sans-serif",color:"#fff",textAlign:"center"}},
-        React.createElement('div',{style:{fontSize:40,marginBottom:16}},"⚠️"),
-        React.createElement('div',{style:{fontSize:16,fontWeight:700,marginBottom:8}},"Something went wrong"),
-        React.createElement('div',{style:{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:24}},String(this.state.err?.message||this.state.err)),
-        React.createElement('button',{onClick:()=>window.location.reload(),style:{background:"#FF6B1A",border:"none",borderRadius:10,padding:"12px 24px",cursor:"pointer",fontWeight:700,fontSize:14,color:"#000"}},"Reload App")
-      )
-    );
-    return this.props.children;
-  }
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ErrorBoundary,null,React.createElement(AppRoot,null)));
+ReactDOM.createRoot(document.getElementById("root")).render(
+  React.createElement(ErrorBoundary, null, React.createElement(AppRoot, null))
+);
 </script>
 </body>
 </html>
