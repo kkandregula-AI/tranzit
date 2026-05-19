@@ -53,7 +53,7 @@ const ROUTE_CACHE = (()=>{
 })();
 
 const BUILTIN_CITIES = {
-  hyderabad:{name:"Hyderabad",country:"India",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],
+  hyderabad:{name:"Hyderabad",country:"India",tz:"Asia/Kolkata",tz:"Asia/Kolkata",tz:"Asia/Kolkata",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],
     coaches:[{l:"M1",p:78,special:false},{l:"M2",p:65,special:false},{l:"M3 ♀",p:55,special:true,note:"Women only"}],
     lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14,freqMins:4},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11,freqMins:6},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8,freqMins:8}],
     stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],
@@ -68,32 +68,32 @@ const BUILTIN_CITIES = {
     lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18,freqMins:4},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22,freqMins:3},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12,freqMins:7}],
     stations:[{stn:"Rajiv Chowk",pct:93,dir:"Yellow + Blue interchange"},{stn:"Kashmere Gate",pct:77,dir:"Red + Yellow + Violet"},{stn:"Hauz Khas",pct:55,dir:"Yellow + Magenta interchange"},{stn:"Noida Sector 18",pct:62,dir:"Blue Line terminus area"}],
     alerts:[{type:"warn",msg:"Red Line delay 15 min — Kashmere Gate to Dilshad Garden"},{type:"info",msg:"AQI 187 (Moderate) — Metro recommended over outdoor options"},{type:"safe",msg:"Pink coach active on all Yellow Line trains till 9 PM"},{type:"crowd",msg:"Rajiv Chowk gate 7 queue 20 min — use gate 2 instead"}]},
-  london:{name:"London",country:"United Kingdom",flag:"🇬🇧",currency:"£",code:"LON",accent:"#1565C0",accentB:"#5BA4E8",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],
+  london:{name:"London",country:"United Kingdom",tz:"Europe/London",flag:"🇬🇧",currency:"£",code:"LON",accent:"#1565C0",accentB:"#5BA4E8",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],
     coaches:[{l:"Car 1",p:82,special:false},{l:"Car 2",p:75,special:false},{l:"Car 3",p:68,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:73,special:false},{l:"Car 6",p:61,special:false},{l:"Car 7",p:55,special:false},{l:"Car 8",p:48,special:false}],
     lines:[{line:"Central Line",route:"West Ruislip ↔ Epping",status:"On Time",trains:16,freqMins:3},{line:"Elizabeth Line",route:"Reading ↔ Shenfield / Abbey",status:"On Time",trains:14,freqMins:5},{line:"Northern Line",route:"Morden ↔ Edgware / Mill Hill",status:"Delayed",trains:18,freqMins:4}],
     stations:[{stn:"King's Cross",pct:82,dir:"6 lines interchange"},{stn:"Bank/Monument",pct:75,dir:"Central + Waterloo + City"},{stn:"Paddington",pct:58,dir:"Elizabeth + Bakerloo + Circle"},{stn:"Liverpool St",pct:69,dir:"Central + Elizabeth + Overground"}],
     alerts:[{type:"warn",msg:"Northern Line severe delays — signal failure at Camden Town"},{type:"info",msg:"Elizabeth Line running 4 extra trains/hr during rush hour"},{type:"safe",msg:"Night Tube active Fri–Sat: Central, Jubilee, Northern, Victoria"},{type:"crowd",msg:"King's Cross gateline queues 15 min — use York Way entrance"}]},
-  singapore:{name:"Singapore",country:"Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#0096C7",accentB:"#48CAE4",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],
+  singapore:{name:"Singapore",country:"Singapore",tz:"Asia/Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#0096C7",accentB:"#48CAE4",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],
     coaches:[{l:"Car 1",p:78,special:false},{l:"Car 2",p:84,special:false},{l:"Car 3",p:61,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:55,special:false},{l:"Car 6",p:43,special:false}],
     lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16,freqMins:4},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20,freqMins:3},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10,freqMins:7}],
     stations:[{stn:"City Hall",pct:78,dir:"NS + EW interchange"},{stn:"Raffles Place",pct:84,dir:"NS + EW CBD core"},{stn:"Dhoby Ghaut",pct:61,dir:"NS + NE + Circle"},{stn:"Jurong East",pct:55,dir:"NS + EW + 2 malls"}],
     alerts:[{type:"warn",msg:"Circle Line reduced frequency — train fault at Promenade"},{type:"info",msg:"Bus 65 express service added on weekday peak from Tampines"},{type:"safe",msg:"SMRT staff at Raffles Place for crowd management 8–9 AM"},{type:"crowd",msg:"City Hall exit C crowded — use Raffles City mall exit"}]},
-  dubai:{name:"Dubai",country:"UAE",flag:"🇦🇪",currency:"AED",code:"DXB",accent:"#C79A00",accentB:"#FFD700",timezone:"GST",transitLabel:"RTA Dubai Metro",defaultFrom:"DMCC (JLT)",defaultTo:"Dubai Airport T3",popularRoutes:[["DMCC (JLT)","Dubai Airport T3"],["Dubai Marina","Mall of the Emirates"],["Deira City Centre","BurJuman"],["Union","Dubai Mall / Burj Khalifa"]],
+  dubai:{name:"Dubai",country:"UAE",tz:"Asia/Dubai",flag:"🇦🇪",currency:"AED",code:"DXB",accent:"#C79A00",accentB:"#FFD700",timezone:"GST",transitLabel:"RTA Dubai Metro",defaultFrom:"DMCC (JLT)",defaultTo:"Dubai Airport T3",popularRoutes:[["DMCC (JLT)","Dubai Airport T3"],["Dubai Marina","Mall of the Emirates"],["Deira City Centre","BurJuman"],["Union","Dubai Mall / Burj Khalifa"]],
     coaches:[{l:"Gold ★",p:35,special:true,note:"Gold Class"},{l:"Silver 1",p:68,special:false},{l:"Silver 2",p:75,special:false},{l:"Silver 3",p:82,special:false},{l:"♀ Only",p:52,special:true,note:"Women & Children"}],
     lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12,freqMins:5},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8,freqMins:7},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6,freqMins:10}],
     stations:[{stn:"Union",pct:72,dir:"Red + Green interchange"},{stn:"DMCC",pct:65,dir:"JLT / Marina area"},{stn:"Dubai Mall",pct:88,dir:"Near Burj Khalifa"},{stn:"Airport T3",pct:55,dir:"DXB Terminal 3"}],
     alerts:[{type:"info",msg:"Gold class carriages available on all Red Line — AED 20 upgrade"},{type:"warn",msg:"Dubai Mall station crowded during sale season — allow 15 min extra"},{type:"safe",msg:"Women & children carriage at front of every train — enforced"},{type:"info",msg:"Nol card top-up at all metro stations and LuLu Hypermarkets"}]},
-  newyork:{name:"New York",country:"United States",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#1A73E8",accentB:"#F5A623",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],
+  newyork:{name:"New York",country:"United States",tz:"America/New_York",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#1A73E8",accentB:"#F5A623",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],
     coaches:[{l:"Car 1",p:91,special:false},{l:"Car 2",p:83,special:false},{l:"Car 3",p:76,special:false},{l:"Car 4",p:88,special:false},{l:"Car 5",p:70,special:false},{l:"Car 6",p:65,special:false},{l:"Car 7",p:58,special:false},{l:"Car 8",p:44,special:false}],
     lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24,freqMins:4},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20,freqMins:5},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10,freqMins:8}],
     stations:[{stn:"Times Sq–42 St",pct:91,dir:"Busiest station globally"},{stn:"Grand Central",pct:83,dir:"4/5/6/7 + Metro-North"},{stn:"Union Square",pct:74,dir:"4/5/6/N/Q/R/W/L"},{stn:"Atlantic Ave",pct:66,dir:"Brooklyn interchange hub"}],
     alerts:[{type:"warn",msg:"4 train running express — skipping 51st, 68th, 77th St"},{type:"info",msg:"OMNY contactless accepted on all buses and subways"},{type:"crowd",msg:"Times Square gridlock — use 42nd St Bryant Park as alternate"},{type:"info",msg:"L train weekend suspended Canarsie–Jefferson: Q shuttle active"}]},
-  tokyo:{name:"Tokyo",country:"Japan",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#2C3E7A",accentB:"#7EC8E3",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],
+  tokyo:{name:"Tokyo",country:"Japan",tz:"Asia/Tokyo",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#2C3E7A",accentB:"#7EC8E3",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],
     coaches:[{l:"1号車",p:88,special:false},{l:"2号車",p:82,special:false},{l:"3号車",p:75,special:false},{l:"4号車 ♀",p:60,special:true,note:"Women only rush hours"},{l:"5号車",p:91,special:false},{l:"6号車",p:78,special:false},{l:"7号車",p:70,special:false},{l:"8号車",p:65,special:false},{l:"9号車",p:55,special:false},{l:"10号車",p:48,special:false},{l:"11号車",p:42,special:false}],
     lines:[{line:"Ginza Line",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14,freqMins:3},{line:"Yamanote Line",route:"Loop (30 stations)",status:"On Time",trains:20,freqMins:2},{line:"Chuo Line",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16,freqMins:5}],
     stations:[{stn:"Shinjuku",pct:96,dir:"World's busiest station"},{stn:"Shibuya",pct:88,dir:"Multiple lines + Scramble"},{stn:"Tokyo",pct:77,dir:"Shinkansen + Yamanote hub"},{stn:"Ikebukuro",pct:80,dir:"Yamanote + Fukutoshin"}],
     alerts:[{type:"warn",msg:"Chuo Line 4 min late — door malfunction at Koenji"},{type:"info",msg:"Suica/Pasmo IC card required — no cash on Tokyo Metro"},{type:"safe",msg:"Women-only carriages active 7–9 AM and 5–9 PM on all Metro"},{type:"crowd",msg:"Shinjuku South Exit — avoid 8:10–8:40 during peak surge"}]},
-  sydney:{name:"Sydney",country:"Australia",flag:"🇦🇺",currency:"A$",code:"SYD",accent:"#00843D",accentB:"#FFD700",timezone:"AEST",transitLabel:"Transport for NSW",defaultFrom:"Bondi Junction",defaultTo:"Wynyard (CBD)",popularRoutes:[["Bondi Junction","Wynyard (CBD)"],["Parramatta","Central"],["Chatswood","Circular Quay"],["Liverpool","Town Hall"]],
+  sydney:{name:"Sydney",country:"Australia",tz:"Australia/Sydney",flag:"🇦🇺",currency:"A$",code:"SYD",accent:"#00843D",accentB:"#FFD700",timezone:"AEST",transitLabel:"Transport for NSW",defaultFrom:"Bondi Junction",defaultTo:"Wynyard (CBD)",popularRoutes:[["Bondi Junction","Wynyard (CBD)"],["Parramatta","Central"],["Chatswood","Circular Quay"],["Liverpool","Town Hall"]],
     coaches:[{l:"Car 1",p:79,special:false},{l:"Car 2",p:72,special:false},{l:"Car 3",p:88,special:false},{l:"Car 4",p:65,special:false},{l:"Car 5",p:58,special:false},{l:"Car 6",p:81,special:false},{l:"Car 7",p:70,special:false},{l:"Car 8",p:45,special:false}],
     lines:[{line:"T1 North Shore",route:"Central ↔ Berowra / Richmond",status:"On Time",trains:10,freqMins:7},{line:"T4 Eastern Sub",route:"Bondi Jn ↔ Waterfall",status:"Delayed",trains:8,freqMins:9},{line:"L2/L3 Kingsford",route:"Circular Quay ↔ Randwick",status:"On Time",trains:6,freqMins:10}],
     stations:[{stn:"Central",pct:79,dir:"All lines + intercity"},{stn:"Town Hall",pct:72,dir:"T1/T2/T3/T4/T8"},{stn:"Wynyard",pct:65,dir:"T1/T2/T3 + Buses"},{stn:"Circular Quay",pct:58,dir:"Trains + Ferries + Light Rail"}],
@@ -669,18 +669,25 @@ async function fetchRoutes(city,from,to,apiKey,onInfo){
   const cleanFrom=from.replace(/^📍\s*/,"").trim();
   const prompt=`You are a transit expert for ${city.name}, ${city.country}. Currency: ${city.currency}.
 
-Generate 6 distinct routes from "${cleanFrom}" to "${to}". Include ALL modes:
-1. Metro/subway — walk to REAL nearest station (not "${cleanFrom}" itself)
-2. Metro + auto feeder to station
-3. Direct bus — list ALL bus route numbers on this corridor
+Generate 6 distinct route OPTIONS from "${cleanFrom}" to "${to}". These are AI estimates for planning only.
+
+Include ALL applicable modes:
+1. Metro/subway — walk to ACTUAL nearest station (NOT "${cleanFrom}") → metro → walk
+2. Metro + auto/cab feeder to nearest station → metro → walk  
+3. Direct bus — name the ACTUAL nearest bus stand and list ALL bus numbers that serve this corridor (e.g. 5K, 216K, 219K)
 4. Auto-rickshaw direct
 5. Cab/taxi direct
-6. Walk/cycle if under 5km
+6. Walk or cycle (only if realistically under 4km)
 
-CRITICAL: Use REAL station names and bus numbers. "via" must read step-by-step: "Walk to [Station] → [Line name] towards [Terminal] → Alight at [Station] → Walk to destination"
+STRICT RULES:
+- NEVER use "${cleanFrom}" as a transit stop name. Always name the actual real nearest stop.
+- "via" field: write real step-by-step e.g. "Walk 800m to Jubilee Hills Check Post Metro → Red Line towards Miyapur → Alight Ameerpet → Walk 400m"
+- Use REAL station names, real bus numbers, real landmarks that exist in ${city.name}.
+- Time and fare should be realistic estimates for ${city.name} traffic conditions.
+- Add a note in "tip" that times are estimates and can vary.
 
-Return ONLY a JSON array, no markdown:
-[{"id":"1","icon":"🚇","label":"Metro Walk","via":"step-by-step","time":25,"fare":35,"crowd":60,"reliability":90,"delay":0,"co2":0.8,"tip":"practical tip"}]`;
+Return ONLY a raw JSON array, no markdown, no explanation:
+[{"id":"1","icon":"🚇","label":"Metro Walk","via":"step by step real route","time":25,"fare":35,"crowd":60,"reliability":90,"delay":0,"co2":0.8,"tip":"AI estimate. Verify timing on HMRL app or Google Maps before travelling."}]`;
 
   const resp=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
@@ -860,13 +867,15 @@ function TranzitApp(){
 
   // Time
   const [time,setTime]=useState(new Date());
-  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),30000);return ()=>clearInterval(t);},[]);
+  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),10000);return ()=>clearInterval(t);},[]);
+  // Re-compute city time on every render using city.tz
+  const cityTimeStr=new Date().toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});
 
   // Helpers
   const fmtFare=v=>Number.isInteger(+v)?String(Math.round(+v)):(+v).toFixed(2);
   const crowdCol=v=>v>=80?"#FF4466":v>=50?"#F5A623":C.emerald;
   const isRide=r=>/cab|uber|ola|taxi|auto|rapido/i.test(r.label||"");
-  const fmtTime=d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
+  const fmtTime=d=>d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});
   const emg=SOS_NUMS[city.country]||"112";
   const statusCol=s=>s==="Normal"?C.emerald:s==="Delayed"?"#F5A623":"#FF4466";
   const urgCol=m=>m<=2?"#FF4466":m<=5?"#F5A623":C.emerald;
@@ -954,7 +963,7 @@ function TranzitApp(){
           <span style={{fontSize:10,color:C.muted}}>▾</span>
         </button>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.muted}}>{fmtTime(time)}</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.muted}}>{cityTimeStr}</span>
           <button onClick={()=>setShowKey(!showKey)}
             style={{background:apiKey?`${C.emerald}15`:"rgba(255,68,102,0.12)",
               border:`1px solid ${apiKey?C.emerald+"44":"rgba(255,68,102,0.3)"}`,
@@ -1255,6 +1264,13 @@ function TranzitApp(){
 
             {searched&&!loading&&routes.length>0&&(
               <div>
+                {/* AI Disclaimer */}
+                <div style={{background:"rgba(245,166,35,0.08)",border:"1px solid rgba(245,166,35,0.25)",borderRadius:10,padding:"9px 12px",marginBottom:12,display:"flex",gap:8,alignItems:"flex-start"}}>
+                  <span style={{fontSize:14,flexShrink:0}}>🤖</span>
+                  <div style={{fontSize:10,color:"rgba(245,166,35,0.85)",lineHeight:1.55}}>
+                    <strong>AI-estimated routes</strong> — times and fares are approximate. Always verify on Google Maps or the transit app before travelling. Real-time data not connected.
+                  </div>
+                </div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div style={{fontSize:12,color:C.textDim}}><strong style={{color:C.text}}>{routes.length} routes found</strong></div>
                   {cacheInfo&&cacheInfo.cached&&(
@@ -1408,14 +1424,17 @@ function TranzitApp(){
           <div>
             <div style={{fontSize:11,color:C.textDim,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
               <span style={{width:7,height:7,borderRadius:"50%",background:C.emerald,display:"inline-block",animation:"pulse 1.5s infinite"}}/>
-              Live feed · {city.transitLabel}
+              Live feed · {city.transitLabel} · <span style={{color:C.emerald,fontFamily:"'DM Mono',monospace"}}>{cityTimeStr}</span> local time
             </div>
             {(city.lines||[]).map((l,i)=>{
               const freq=l.freqMins||5;
               const delay=l.status==="Delayed"?Math.floor(Math.random()*5)+3:0;
               const now=new Date();
               const t1=freq+delay,t2=freq*2+delay,t3=freq*3;
-              const fmt=m=>new Date(now.getTime()+m*60000).toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true});
+              const fmt=m=>{
+                const d=new Date(now.getTime()+m*60000);
+                return d.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:city.tz||"Asia/Kolkata"});
+              };
               const uc=m=>m<=2?"#FF4466":m<=5?"#F5A623":C.emerald;
               return(
                 <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
