@@ -791,25 +791,52 @@ async function fetchGoogleRoutes(from, to, gmapsKey, city, coords) {
   const cabPerKm  = {"India":16,"Singapore":3.2,"UAE":2.8,"Japan":5,"United Kingdom":2.5,"United States":2.8,"Australia":3.5,"Germany":2,"France":2.2,"Canada":2.5}[city.country] || 16;
 
   // Parallel requests — use exact GPS coordinates for origin
-  const [transitResult, driveResult, walkResult] = await Promise.all([
+  // Request transit 3 ways: default, subway-preferred, bus-preferred
+  const [transitDefault, transitSubway, transitBus, driveResult, walkResult] = await Promise.all([
     gMapsRoute(origin, destination, 'TRANSIT'),
+    gMapsRoute(origin, destination, 'TRANSIT', {
+      transitOptions:{
+        departureTime: new Date(),
+        modes:[window.google.maps.TransitMode.SUBWAY, window.google.maps.TransitMode.RAIL,
+               window.google.maps.TransitMode.TRAM]
+      }
+    }),
+    gMapsRoute(origin, destination, 'TRANSIT', {
+      transitOptions:{
+        departureTime: new Date(),
+        modes:[window.google.maps.TransitMode.BUS]
+      }
+    }),
     gMapsRoute(origin, destination, 'DRIVING'),
     gMapsRoute(origin, destination, 'WALKING'),
   ]);
 
   const routes = [];
 
-  // Transit alternatives (could be 1-3 different routes)
-  if (transitResult?.routes?.length) {
-    transitResult.routes.slice(0, 3).forEach((r, i) => {
-      try {
-        const parsed = parseTransitRoute(r, i);
-        if (parsed && !routes.find(x => x.label === parsed.label)) {
-          routes.push(parsed);
-        }
-      } catch(e) { console.warn('Transit parse error:', e.message); }
-    });
-  }
+  // Collect all transit results, dedup by via content
+  const allTransitResults = [transitSubway, transitDefault, transitBus]
+    .filter(Boolean)
+    .flatMap(r => r?.routes||[]);
+
+  // Check if Google returned any subway/metro steps
+  const hasGoogleMetro = allTransitResults.some(r =>
+    (r.legs||[]).some(leg =>
+      (leg.steps||[]).some(s =>
+        s.travel_mode==='TRANSIT' &&
+        ['SUBWAY','METRO_RAIL','HEAVY_RAIL','COMMUTER_TRAIN'].includes(s.transit?.line?.vehicle?.type)
+      )
+    )
+  );
+
+  // Parse all transit routes, dedup by label
+  allTransitResults.forEach((r, i) => {
+    try {
+      const parsed = parseTransitRoute(r, i);
+      if (parsed && !routes.find(x => x.label === parsed.label)) {
+        routes.push(parsed);
+      }
+    } catch(e) { console.warn('Transit parse error:', e.message); }
+  });
 
   // Driving route — parse for cab + auto estimates
   if (driveResult?.routes?.[0]) {
@@ -846,10 +873,49 @@ async function fetchGoogleRoutes(from, to, gmapsKey, city, coords) {
     } catch(e) { console.warn('Walk parse error:', e.message); }
   }
 
-  return routes;
+  return {routes, hasGoogleMetro};
 }
 
-// ─── ADD CLAUDE INTELLIGENCE LAYER ───────────────────────────────────────────
+// ─── CLAUDE METRO ESTIMATOR (when Google doesn't have metro data) ─────────────
+// Used for Indian cities where Google Maps doesn't return metro in transit results
+async function getClaudeMetroRoutes(city, from, to, coords, anthropicKey) {
+  if (!anthropicKey) return [];
+  const cleanFrom = from.replace(/^📍\s*/,'').trim();
+  const locContext = coords
+    ? `GPS coordinates: ${coords.lat}, ${coords.lng} (near: "${cleanFrom}")`
+    : `Address: "${cleanFrom}"`;
+
+  const prompt = `Transit expert for ${city.name}, ${city.country}. Currency: ${city.currency}.
+
+Origin: ${locContext}
+Destination: "${to}, ${city.name}"
+
+Google Maps does NOT have ${city.name} metro data. Generate 2 metro route estimates using your knowledge:
+1. Metro (walk to station) — find the ACTUAL nearest metro station to these GPS coordinates. Name it precisely with walking distance in metres.
+2. Metro + Auto feeder — auto to a metro station (possibly different), then metro.
+
+Use REAL ${city.name} metro station names, correct line names, and realistic fares.
+"via" format: "Walk Xm to [Real Station] → [Line] towards [Terminal] → [N] stops → Alight [Real Station] → Walk Xm"
+
+Return ONLY a JSON array of 2 items, no markdown:
+[{"id":"metro_walk","icon":"🚇","label":"Metro (Walk)","via":"...","time":0,"fare":0,"crowd":60,"reliability":88,"delay":0,"co2":0.5,"tip":"AI metro estimate — verify on HMRL/DMRC app","verified":false}]`;
+
+  try {
+    const ctrl = new AbortController(); setTimeout(()=>ctrl.abort(), 12000);
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":anthropicKey,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:MODEL_ID, max_tokens:600,
+        messages:[{role:"user", content:prompt}]}),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const txt = data.content.map(x=>x.text||"").join("").replace(/```json|```/g,"").trim();
+    return JSON.parse(txt).map(r=>({...r, verified:false}));
+  } catch(e) { return []; }
+}
 async function addClaudeIntelligence(routes, city, from, to, anthropicKey, onTokens) {
   if (!anthropicKey || !routes.length) return routes;
 
@@ -961,10 +1027,23 @@ async function fetchRoutes(city, from, to, gmapsKey, anthropicKey, coords, onInf
       return ROUTE_CACHE[cacheKey].routes;
     }
 
-    let routes = await fetchGoogleRoutes(from, to, gmapsKey, city, coords);
-    if (!routes.length) throw new Error("No routes found. Check your origin and destination.");
+    const {routes: gmapsRoutes, hasGoogleMetro} = await fetchGoogleRoutes(from, to, gmapsKey, city, coords);
+    if (!gmapsRoutes.length) throw new Error("No routes found. Check your origin and destination.");
 
+    let routes = [...gmapsRoutes];
     let totalTokens = 0;
+
+    // If Google didn't return metro (common for Indian cities — HMRL/DMRC not in Google transit)
+    // use Claude to estimate metro routes and prepend them
+    const citiesNeedingMetroFallback = ['HYD','DEL','BOM'];
+    if (!hasGoogleMetro && citiesNeedingMetroFallback.includes(city.code) && anthropicKey) {
+      onInfo({cached:false, tokens:0, savedTokens:0, verified:true, msg:"🚇 Fetching metro estimates…"});
+      const metroRoutes = await getClaudeMetroRoutes(city, from, to, coords, anthropicKey);
+      totalTokens += metroRoutes.length * 300; // approximate
+      // Prepend metro routes — they appear first in the list
+      routes = [...metroRoutes, ...routes];
+    }
+
     if (anthropicKey) {
       routes = await addClaudeIntelligence(routes, city, from, to, anthropicKey, t => totalTokens += t);
     }
