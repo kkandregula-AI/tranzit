@@ -770,18 +770,31 @@ function parseWalkRoute(route) {
 }
 
 // ─── FETCH ALL GOOGLE ROUTES ──────────────────────────────────────────────────
-async function fetchGoogleRoutes(from, to, gmapsKey, city) {
+async function fetchGoogleRoutes(from, to, gmapsKey, city, coords) {
   await loadGoogleMaps(gmapsKey);
+
+  // When GPS coords are available, use them directly — prevents Google from
+  // geocoding the address text and picking the wrong city (e.g. Bangalore vs Hyderabad)
+  const origin = coords
+    ? new window.google.maps.LatLng(coords.lat, coords.lng)
+    : from.replace(/^📍\s*/,'').trim();
+
+  // Append city name to destination if it doesn't already contain it
+  // — prevents Google picking a similarly-named place in another city
+  const cleanTo = to.trim();
+  const destination = cleanTo.toLowerCase().includes(city.name.toLowerCase())
+    ? cleanTo
+    : `${cleanTo}, ${city.name}`;
 
   // Fare-per-km estimates by country (auto/cab)
   const autoPerKm = {"India":12,"Singapore":0,"UAE":0,"Japan":0,"United Kingdom":0,"United States":0,"Australia":0,"Germany":0,"France":0,"Canada":0}[city.country] || 12;
   const cabPerKm  = {"India":16,"Singapore":3.2,"UAE":2.8,"Japan":5,"United Kingdom":2.5,"United States":2.8,"Australia":3.5,"Germany":2,"France":2.2,"Canada":2.5}[city.country] || 16;
 
-  // Parallel requests
+  // Parallel requests — use exact GPS coordinates for origin
   const [transitResult, driveResult, walkResult] = await Promise.all([
-    gMapsRoute(from, to, 'TRANSIT'),
-    gMapsRoute(from, to, 'DRIVING'),
-    gMapsRoute(from, to, 'WALKING'),
+    gMapsRoute(origin, destination, 'TRANSIT'),
+    gMapsRoute(origin, destination, 'DRIVING'),
+    gMapsRoute(origin, destination, 'WALKING'),
   ]);
 
   const routes = [];
@@ -948,7 +961,7 @@ async function fetchRoutes(city, from, to, gmapsKey, anthropicKey, coords, onInf
       return ROUTE_CACHE[cacheKey].routes;
     }
 
-    let routes = await fetchGoogleRoutes(from, to, gmapsKey, city);
+    let routes = await fetchGoogleRoutes(from, to, gmapsKey, city, coords);
     if (!routes.length) throw new Error("No routes found. Check your origin and destination.");
 
     let totalTokens = 0;
@@ -1858,71 +1871,77 @@ function TranzitApp(){
                   </div>
                 </div>
 
-                {/* Two clear options: GPS button | OR | Text input */}
-                {!from ? (
-                  <div>
-                    {/* Option 1 — GPS button (prominent) */}
-                    <button onClick={useGPS} disabled={gpsLoad}
-                      style={{width:"100%",background:gpsLoad?`${ACC}20`:`linear-gradient(135deg,${C.emerald}22,${C.emerald}10)`,
-                        border:`2px solid ${C.emerald}66`,borderRadius:10,padding:"12px 14px",cursor:"pointer",
-                        display:"flex",alignItems:"center",gap:10,marginBottom:9,
-                        textAlign:"left",transition:"all 0.2s"}}>
-                      <div style={{width:36,height:36,borderRadius:9,background:gpsLoad?`${ACC}30`:`${C.emerald}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
-                        {gpsLoad?"⏳":"📍"}
+                {/* GPS button — always visible at top */}
+                {!fromCoords&&(
+                  <button onClick={useGPS} disabled={gpsLoad}
+                    style={{width:"100%",background:gpsLoad?`${ACC}15`:`linear-gradient(135deg,${C.emerald}18,${C.emerald}08)`,
+                      border:`1.5px solid ${C.emerald}55`,borderRadius:10,padding:"10px 13px",cursor:"pointer",
+                      display:"flex",alignItems:"center",gap:10,marginBottom:9,textAlign:"left"}}>
+                    <div style={{width:32,height:32,borderRadius:8,background:gpsLoad?`${ACC}25`:`${C.emerald}20`,
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                      {gpsLoad?"⏳":"📍"}
+                    </div>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:C.emerald}}>
+                        {gpsLoad?"Detecting location…":"Use My Current Location"}
                       </div>
-                      <div>
-                        <div style={{fontSize:13,fontWeight:700,color:C.emerald}}>
-                          {gpsLoad?"Getting your location…":"Use My Current Location"}
-                        </div>
-                        <div style={{fontSize:10,color:C.textDim,marginTop:1}}>
-                          {gpsLoad?"Please wait…":"Tap to detect via GPS — most accurate"}
-                        </div>
+                      <div style={{fontSize:10,color:C.textDim,marginTop:1}}>
+                        {gpsLoad?"Please wait…":"Most accurate — tap to auto-fill"}
                       </div>
+                    </div>
+                  </button>
+                )}
+
+                {/* GPS confirmed — show coords chip + change button */}
+                {fromCoords&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,
+                    background:"rgba(0,212,170,0.08)",border:`1px solid ${C.emerald}44`,
+                    borderRadius:9,padding:"7px 11px"}}>
+                    <span style={{fontSize:14,flexShrink:0}}>📍</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,fontWeight:600,color:C.emerald}}>GPS location set</div>
+                      <div style={{fontSize:9,color:C.muted,marginTop:1}}>{fromCoords.lat}, {fromCoords.lng}</div>
+                    </div>
+                    <button onClick={()=>{setFrom("");setFromCoords(null);setFromSug([]);setRoutes([]);setSearched(false);}}
+                      style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${C.border}`,borderRadius:6,
+                        padding:"4px 9px",cursor:"pointer",fontSize:10,color:C.muted,flexShrink:0,whiteSpace:"nowrap"}}>
+                      ✕ Clear
                     </button>
-
-                    {/* Divider */}
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
-                      <div style={{flex:1,height:1,background:C.border}}/>
-                      <span style={{fontSize:10,color:C.muted,fontWeight:600}}>OR TYPE AN ADDRESS</span>
-                      <div style={{flex:1,height:1,background:C.border}}/>
-                    </div>
-
-                    {/* Option 2 — text input */}
-                    <input
-                      value={from}
-                      onChange={e=>{setFrom(e.target.value);setFromCoords(null);triggerAC(e.target.value,"from");setRoutes([]);setSearched(false);}}
-                      onFocus={()=>setFromFocus(true)}
-                      onBlur={()=>setTimeout(()=>setFromFocus(false),200)}
-                      placeholder={`Type area, landmark or address in ${city.name}…`}
-                      style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}44`,borderRadius:9,
-                        padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-                  </div>
-                ) : (
-                  /* Filled state — show value with clear + edit options */
-                  <div>
-                    <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(0,0,0,0.3)",border:`1.5px solid ${fromCoords?C.emerald:ACC+"55"}`,borderRadius:10,padding:"10px 12px"}}>
-                      <span style={{fontSize:16,flexShrink:0}}>{fromCoords?"📍":"✏️"}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,color:C.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{from.replace(/^📍\s*/,"")}</div>
-                        <div style={{fontSize:9,color:fromCoords?C.emerald:C.muted,marginTop:1}}>
-                          {fromCoords?`📍 GPS: ${fromCoords.lat}, ${fromCoords.lng}`:"Typed address"}
-                        </div>
-                      </div>
-                      <button onClick={()=>{setFrom("");setFromCoords(null);setFromSug([]);setRoutes([]);setSearched(false);}}
-                        style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 8px",cursor:"pointer",fontSize:11,color:C.muted,flexShrink:0}}>
-                        ✕ Clear
-                      </button>
-                    </div>
                   </div>
                 )}
 
+                {/* Divider */}
+                {!fromCoords&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
+                    <div style={{flex:1,height:1,background:C.border}}/>
+                    <span style={{fontSize:10,color:C.muted,fontWeight:600}}>OR TYPE AN ADDRESS</span>
+                    <div style={{flex:1,height:1,background:C.border}}/>
+                  </div>
+                )}
+
+                {/* Text input — always visible, auto-focused when typing */}
+                <input
+                  value={fromCoords ? from.replace(/^📍\s*/,"") : from}
+                  onChange={e=>{setFrom(e.target.value);setFromCoords(null);triggerAC(e.target.value,"from");setRoutes([]);setSearched(false);}}
+                  onFocus={()=>setFromFocus(true)}
+                  onBlur={()=>setTimeout(()=>setFromFocus(false),200)}
+                  readOnly={!!fromCoords}
+                  placeholder={fromCoords ? "GPS location active — clear to type" : `Type area, landmark or address in ${city.name}…`}
+                  style={{width:"100%",background:fromCoords?"rgba(0,212,170,0.05)":"rgba(0,0,0,0.3)",
+                    border:`1px solid ${fromCoords?C.emerald+"33":ACC+"44"}`,borderRadius:9,
+                    padding:"10px 12px",color:fromCoords?C.textDim:C.text,fontSize:13,
+                    outline:"none",boxSizing:"border-box",
+                    opacity:fromCoords?0.7:1}}/>
+
                 {/* Autocomplete dropdown */}
-                {fromFocus&&fromSug.length>0&&(
+                {fromFocus&&fromSug.length>0&&!fromCoords&&(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,background:"#1A1A28",border:`1px solid ${ACC}44`,borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
                     <div style={{padding:"7px 12px 5px",fontSize:9,color:C.muted,letterSpacing:"0.08em",borderBottom:`1px solid ${C.border}`}}>SUGGESTIONS</div>
                     {fromSug.map((s,i)=>(
                       <div key={i} onMouseDown={()=>{setFrom(s);setFromSug([]);setFromCoords(null);setRoutes([]);setSearched(false);}}
-                        style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:i<fromSug.length-1?`1px solid ${C.border}`:"none",display:"flex",gap:8,alignItems:"center"}}>
+                        style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",
+                          borderBottom:i<fromSug.length-1?`1px solid ${C.border}`:"none",
+                          display:"flex",gap:8,alignItems:"center"}}>
                         <span style={{color:C.muted}}>📍</span><span>{s}</span>
                       </div>
                     ))}
