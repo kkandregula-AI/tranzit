@@ -52,17 +52,17 @@ const ROUTE_CACHE = (()=>{try{return JSON.parse(localStorage.getItem(ROUTE_CACHE
 const BUILTIN_CITIES = {
   hyderabad:{name:"Hyderabad",country:"India",tz:"Asia/Kolkata",flag:"🇮🇳",currency:"₹",code:"HYD",accent:"#FF6B1A",accentB:"#F5A623",timezone:"IST",transitLabel:"Telangana Metro / TSRTC",defaultFrom:"Gachibowli",defaultTo:"Secunderabad Junction",popularRoutes:[["Gachibowli","Secunderabad Junction"],["Hitech City","Charminar"],["Kukatpally","Dilsukhnagar"],["KPHB Colony","Mehdipatnam"]],
     coaches:[{l:"M1",p:78,special:false},{l:"M2",p:65,special:false},{l:"M3 ♀",p:55,special:true,note:"Women only"}],
-    lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14,freqMins:4},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11,freqMins:6},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8,freqMins:8}],
+    timetable:[{"id": "blue", "name": "Blue Line", "route": "Miyapur \u2194 LB Nagar", "color": "#0070C0", "first": "05:50", "last": "22:50", "peakFreq": 4, "offPeakFreq": 8, "peakHours": [[7, 10], [17, 20]], "note": "HMRL published schedule"}, {"id": "red", "name": "Red Line", "route": "Nagole \u2194 Raidurgam", "color": "#FF0000", "first": "06:00", "last": "22:45", "peakFreq": 6, "offPeakFreq": 10, "peakHours": [[7, 10], [17, 20]], "note": "HMRL published schedule"}, {"id": "green", "name": "Green Line", "route": "JBS \u2194 MGBS", "color": "#00B050", "first": "06:15", "last": "22:30", "peakFreq": 8, "offPeakFreq": 12, "peakHours": [[7, 10], [17, 20]], "note": "HMRL published schedule"}],lines:[{line:"Blue Line",route:"Miyapur ↔ LB Nagar",status:"Delayed",trains:14,freqMins:4},{line:"Red Line",route:"Nagole ↔ Raidurgam",status:"On Time",trains:11,freqMins:6},{line:"Green Line",route:"JBS ↔ MGBS",status:"On Time",trains:8,freqMins:8}],
     stations:[{stn:"Hitech City",pct:48,dir:"Towards LB Nagar"},{stn:"Ameerpet",pct:91,dir:"Interchange — Very Crowded"},{stn:"Paradise",pct:67,dir:"Towards Miyapur"},{stn:"Secunderabad",pct:55,dir:"Terminus"}],
     alerts:[{type:"warn",msg:"Metro Blue Line delayed 8 min — signal fault near Ameerpet"},{type:"info",msg:"TSRTC 216K running on alternate route via Banjara Hills"},{type:"safe",msg:"Safe Zone active: Women's coach M3 verified occupied"},{type:"crowd",msg:"Secunderabad platform 3 crowd HIGH — suggest M2 coach"}]},
   mumbai:{name:"Mumbai",country:"India",flag:"🇮🇳",currency:"₹",code:"BOM",accent:"#0288D1",accentB:"#4FC3F7",timezone:"IST",transitLabel:"Mumbai Local & Metro",defaultFrom:"Andheri",defaultTo:"Churchgate",popularRoutes:[["Andheri","Churchgate"],["Bandra","CST"],["Borivali","Dadar"],["Kurla","Thane"]],
     coaches:[{l:"C1 ♀",p:72,special:true,note:"Ladies"},{l:"C2",p:88,special:false},{l:"C3",p:91,special:false},{l:"C4",p:84,special:false},{l:"C5",p:79,special:false},{l:"C6",p:65,special:false},{l:"C7",p:70,special:false},{l:"C8",p:55,special:false},{l:"C9 ♀",p:60,special:true,note:"Ladies"}],
-    lines:[{line:"Western",route:"Churchgate ↔ Dahanu Road",status:"On Time",trains:22,freqMins:3},{line:"Central",route:"CST ↔ Kasara / Panvel",status:"Delayed",trains:20,freqMins:4},{line:"Harbour",route:"CST ↔ Panvel",status:"On Time",trains:14,freqMins:6}],
+    timetable:[{"id": "m1", "name": "Metro Line 1", "route": "Versova \u2194 Ghatkopar", "color": "#FF6600", "first": "06:29", "last": "22:29", "peakFreq": 4, "offPeakFreq": 8, "peakHours": [[8, 10], [17, 20]], "note": "Mumbai Metro One official schedule"}, {"id": "m2a", "name": "Metro Line 2A", "route": "Dahisar (E) \u2194 D.N. Nagar", "color": "#9900CC", "first": "06:00", "last": "22:30", "peakFreq": 5, "offPeakFreq": 9, "peakHours": [[8, 10], [17, 20]], "note": "MMRDA published schedule"}, {"id": "m7", "name": "Metro Line 7", "route": "Andheri (E) \u2194 Dahisar (E)", "color": "#FF0099", "first": "06:00", "last": "22:30", "peakFreq": 5, "offPeakFreq": 9, "peakHours": [[8, 10], [17, 20]], "note": "MMRDA published schedule"}],lines:[{line:"Western",route:"Churchgate ↔ Dahanu Road",status:"On Time",trains:22,freqMins:3},{line:"Central",route:"CST ↔ Kasara / Panvel",status:"Delayed",trains:20,freqMins:4},{line:"Harbour",route:"CST ↔ Panvel",status:"On Time",trains:14,freqMins:6}],
     stations:[{stn:"Dadar",pct:96,dir:"Western + Central interchange"},{stn:"Andheri",pct:84,dir:"Western Line"},{stn:"Kurla",pct:79,dir:"Central + Metro interchange"},{stn:"Bandra",pct:61,dir:"Western Line"}],
     alerts:[{type:"warn",msg:"Central Line delayed 12 min — track maintenance near Thane"},{type:"info",msg:"AC Local on platform 7 instead of 4 — Churchgate"},{type:"safe",msg:"Women's special 7:45 AM fast from Borivali platform 2"},{type:"crowd",msg:"Dadar station crowd RED — use foot overbridge exit 3"}]},
   delhi:{name:"Delhi",country:"India",flag:"🇮🇳",currency:"₹",code:"DEL",accent:"#7B1FA2",accentB:"#CE93D8",timezone:"IST",transitLabel:"Delhi Metro (DMRC)",defaultFrom:"Dwarka Sec 21",defaultTo:"Connaught Place",popularRoutes:[["Dwarka Sec 21","Connaught Place"],["Noida Sec 18","Rajiv Chowk"],["Gurgaon","Hauz Khas"],["Rohini","Chandni Chowk"]],
     coaches:[{l:"C1 ♀",p:58,special:true,note:"Pink Coach"},{l:"C2",p:88,special:false},{l:"C3",p:76,special:false},{l:"C4",p:93,special:false},{l:"C5",p:69,special:false},{l:"C6",p:52,special:false}],
-    lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18,freqMins:4},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22,freqMins:3},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12,freqMins:7}],
+    timetable:[{"id": "yellow", "name": "Yellow Line", "route": "Samaypur Badli \u2194 HUDA City Centre", "color": "#FFD700", "first": "05:00", "last": "23:00", "peakFreq": 3, "offPeakFreq": 6, "peakHours": [[8, 10], [17, 20]], "note": "DMRC published schedule"}, {"id": "blue", "name": "Blue Line", "route": "Dwarka Sec 21 \u2194 Noida / Vaishali", "color": "#0070C0", "first": "05:00", "last": "23:00", "peakFreq": 3, "offPeakFreq": 6, "peakHours": [[8, 10], [17, 20]], "note": "DMRC published schedule"}, {"id": "red", "name": "Red Line", "route": "Rithala \u2194 Shaheed Sthal", "color": "#FF0000", "first": "05:30", "last": "23:00", "peakFreq": 4, "offPeakFreq": 7, "peakHours": [[8, 10], [17, 20]], "note": "DMRC published schedule"}, {"id": "green", "name": "Green Line", "route": "Brigadier Hoshiyar Singh \u2194 Inderlok", "color": "#00B050", "first": "05:50", "last": "22:50", "peakFreq": 6, "offPeakFreq": 10, "peakHours": [[8, 10], [17, 20]], "note": "DMRC published schedule"}],lines:[{line:"Yellow Line",route:"Samaypur Badli ↔ HUDA City Centre",status:"On Time",trains:18,freqMins:4},{line:"Blue Line",route:"Dwarka ↔ Vaishali / Noida",status:"On Time",trains:22,freqMins:3},{line:"Red Line",route:"Rithala ↔ Shaheed Sthal",status:"Delayed",trains:12,freqMins:7}],
     stations:[{stn:"Rajiv Chowk",pct:93,dir:"Yellow + Blue interchange"},{stn:"Kashmere Gate",pct:77,dir:"Red + Yellow + Violet"},{stn:"Hauz Khas",pct:55,dir:"Yellow + Magenta interchange"},{stn:"Noida Sector 18",pct:62,dir:"Blue Line terminus area"}],
     alerts:[{type:"warn",msg:"Red Line delay 15 min — Kashmere Gate to Dilshad Garden"},{type:"info",msg:"AQI 187 (Moderate) — Metro recommended over outdoor options"},{type:"safe",msg:"Pink coach active on all Yellow Line trains till 9 PM"},{type:"crowd",msg:"Rajiv Chowk gate 7 queue 20 min — use gate 2 instead"}]},
   london:{name:"London",country:"United Kingdom",tz:"Europe/London",flag:"🇬🇧",currency:"£",code:"LON",accent:"#1565C0",accentB:"#5BA4E8",timezone:"BST",transitLabel:"Transport for London (TfL)",defaultFrom:"Notting Hill Gate",defaultTo:"Canary Wharf",popularRoutes:[["Notting Hill Gate","Canary Wharf"],["King's Cross","Waterloo"],["Heathrow T5","Paddington"],["Stratford","Oxford Circus"]],
@@ -72,27 +72,27 @@ const BUILTIN_CITIES = {
     alerts:[{type:"warn",msg:"Northern Line severe delays — signal failure at Camden Town"},{type:"info",msg:"Elizabeth Line running 4 extra trains/hr during rush hour"},{type:"safe",msg:"Night Tube active Fri–Sat: Central, Jubilee, Northern, Victoria"},{type:"crowd",msg:"King's Cross gateline queues 15 min — use York Way entrance"}]},
   singapore:{name:"Singapore",country:"Singapore",tz:"Asia/Singapore",flag:"🇸🇬",currency:"S$",code:"SIN",accent:"#0096C7",accentB:"#48CAE4",timezone:"SGT",transitLabel:"SMRT / SBS Transit",defaultFrom:"Punggol",defaultTo:"Raffles Place",popularRoutes:[["Punggol","Raffles Place"],["Jurong East","City Hall"],["Tampines","Orchard"],["Woodlands","Marina Bay"]],
     coaches:[{l:"Car 1",p:78,special:false},{l:"Car 2",p:84,special:false},{l:"Car 3",p:61,special:false},{l:"Car 4",p:90,special:false},{l:"Car 5",p:55,special:false},{l:"Car 6",p:43,special:false}],
-    lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16,freqMins:4},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20,freqMins:3},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10,freqMins:7}],
+    timetable:[{"id": "nsew", "name": "North South Line", "route": "Jurong East \u2194 Marina South Pier", "color": "#FF0000", "first": "05:30", "last": "23:18", "peakFreq": 2, "offPeakFreq": 5, "peakHours": [[7, 9], [17, 20]], "note": "SMRT official timetable"}, {"id": "ew", "name": "East West Line", "route": "Pasir Ris \u2194 Tuas Link", "color": "#009900", "first": "05:13", "last": "23:59", "peakFreq": 2, "offPeakFreq": 5, "peakHours": [[7, 9], [17, 20]], "note": "SMRT official timetable"}, {"id": "cc", "name": "Circle Line", "route": "Dhoby Ghaut \u2194 HarbourFront", "color": "#FF8C00", "first": "05:59", "last": "23:59", "peakFreq": 3, "offPeakFreq": 6, "peakHours": [[7, 9], [17, 20]], "note": "SMRT official timetable"}, {"id": "dt", "name": "Downtown Line", "route": "Bukit Panjang \u2194 Expo", "color": "#0000CC", "first": "05:30", "last": "00:03", "peakFreq": 3, "offPeakFreq": 6, "peakHours": [[7, 9], [17, 20]], "note": "SBS Transit official timetable"}],lines:[{line:"North-South",route:"Jurong East ↔ Marina South Pier",status:"On Time",trains:16,freqMins:4},{line:"East-West",route:"Pasir Ris ↔ Tuas Link",status:"On Time",trains:20,freqMins:3},{line:"Circle",route:"Harbourfront ↔ Dhoby Ghaut",status:"Delayed",trains:10,freqMins:7}],
     stations:[{stn:"City Hall",pct:78,dir:"NS + EW interchange"},{stn:"Raffles Place",pct:84,dir:"NS + EW CBD core"},{stn:"Dhoby Ghaut",pct:61,dir:"NS + NE + Circle"},{stn:"Jurong East",pct:55,dir:"NS + EW + 2 malls"}],
     alerts:[{type:"warn",msg:"Circle Line reduced frequency — train fault at Promenade"},{type:"info",msg:"Bus 65 express service added on weekday peak from Tampines"},{type:"safe",msg:"SMRT staff at Raffles Place for crowd management 8–9 AM"},{type:"crowd",msg:"City Hall exit C crowded — use Raffles City mall exit"}]},
   dubai:{name:"Dubai",country:"UAE",tz:"Asia/Dubai",flag:"🇦🇪",currency:"AED",code:"DXB",accent:"#C79A00",accentB:"#FFD700",timezone:"GST",transitLabel:"RTA Dubai Metro",defaultFrom:"DMCC (JLT)",defaultTo:"Dubai Airport T3",popularRoutes:[["DMCC (JLT)","Dubai Airport T3"],["Dubai Marina","Mall of the Emirates"],["Deira City Centre","BurJuman"],["Union","Dubai Mall / Burj Khalifa"]],
     coaches:[{l:"Gold ★",p:35,special:true,note:"Gold Class"},{l:"Silver 1",p:68,special:false},{l:"Silver 2",p:75,special:false},{l:"Silver 3",p:82,special:false},{l:"♀ Only",p:52,special:true,note:"Women & Children"}],
-    lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12,freqMins:5},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8,freqMins:7},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6,freqMins:10}],
+    timetable:[{"id": "red", "name": "Red Line", "route": "UAE Exchange \u2194 Centrepoint", "color": "#FF0000", "first": "05:30", "last": "00:00", "peakFreq": 4, "offPeakFreq": 7, "peakHours": [[7, 10], [16, 20]], "note": "RTA Dubai Metro schedule", "fridayFirst": "10:00", "fridayLast": "01:00"}, {"id": "green", "name": "Green Line", "route": "Creek \u2194 Etisalat", "color": "#00B050", "first": "05:50", "last": "00:00", "peakFreq": 6, "offPeakFreq": 10, "peakHours": [[7, 10], [16, 20]], "note": "RTA Dubai Metro schedule", "fridayFirst": "10:00", "fridayLast": "01:00"}],lines:[{line:"Red Line",route:"UAE Exchange ↔ Centrepoint",status:"On Time",trains:12,freqMins:5},{line:"Green Line",route:"Creek ↔ Etisalat",status:"On Time",trains:8,freqMins:7},{line:"Dubai Tram",route:"Dubai Marina ↔ Al Sufouh",status:"On Time",trains:6,freqMins:10}],
     stations:[{stn:"Union",pct:72,dir:"Red + Green interchange"},{stn:"DMCC",pct:65,dir:"JLT / Marina area"},{stn:"Dubai Mall",pct:88,dir:"Near Burj Khalifa"},{stn:"Airport T3",pct:55,dir:"DXB Terminal 3"}],
     alerts:[{type:"info",msg:"Gold class carriages available on all Red Line — AED 20 upgrade"},{type:"warn",msg:"Dubai Mall station crowded during sale season — allow 15 min extra"},{type:"safe",msg:"Women & children carriage at front of every train — enforced"},{type:"info",msg:"Nol card top-up at all metro stations and LuLu Hypermarkets"}]},
   newyork:{name:"New York",country:"United States",tz:"America/New_York",flag:"🇺🇸",currency:"$",code:"NYC",accent:"#1A73E8",accentB:"#F5A623",timezone:"ET",transitLabel:"MTA New York City Transit",defaultFrom:"Brooklyn Heights",defaultTo:"Midtown Manhattan",popularRoutes:[["Brooklyn Heights","Midtown Manhattan"],["JFK Airport","Times Square"],["Flushing","Union Square"],["The Bronx","Lower Manhattan"]],
     coaches:[{l:"Car 1",p:91,special:false},{l:"Car 2",p:83,special:false},{l:"Car 3",p:76,special:false},{l:"Car 4",p:88,special:false},{l:"Car 5",p:70,special:false},{l:"Car 6",p:65,special:false},{l:"Car 7",p:58,special:false},{l:"Car 8",p:44,special:false}],
-    lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24,freqMins:4},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20,freqMins:5},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10,freqMins:8}],
+    timetable:[{"id": "123", "name": "1/2/3 Lines", "route": "Van Cortlandt Park \u2194 New Lots Av (24/7)", "color": "#EE352E", "first": "00:00", "last": "23:59", "peakFreq": 4, "offPeakFreq": 10, "peakHours": [[7, 9], [17, 19]], "note": "MTA NYC Transit \u2014 24/7 service"}, {"id": "456", "name": "4/5/6 Lines", "route": "Woodlawn \u2194 Pelham Bay (24/7)", "color": "#00933C", "first": "00:00", "last": "23:59", "peakFreq": 4, "offPeakFreq": 8, "peakHours": [[7, 9], [17, 19]], "note": "MTA NYC Transit \u2014 24/7 service"}, {"id": "ace", "name": "A/C/E Lines", "route": "Far Rockaway \u2194 Jamaica (24/7)", "color": "#0039A6", "first": "00:00", "last": "23:59", "peakFreq": 6, "offPeakFreq": 12, "peakHours": [[7, 9], [17, 19]], "note": "MTA NYC Transit \u2014 24/7 service"}, {"id": "nqrw", "name": "N/Q/R/W Lines", "route": "Astoria \u2194 Coney Island (24/7)", "color": "#FCCC0A", "first": "00:00", "last": "23:59", "peakFreq": 6, "offPeakFreq": 12, "peakHours": [[7, 9], [17, 19]], "note": "MTA NYC Transit \u2014 24/7 service"}],lines:[{line:"4/5/6 Lexington",route:"Bronx ↔ Brooklyn",status:"Delayed",trains:24,freqMins:4},{line:"A/C/E 8th Ave",route:"Inwood ↔ Far Rockaway",status:"On Time",trains:20,freqMins:5},{line:"L Canarsie",route:"8th Ave ↔ Canarsie",status:"On Time",trains:10,freqMins:8}],
     stations:[{stn:"Times Sq–42 St",pct:91,dir:"Busiest station globally"},{stn:"Grand Central",pct:83,dir:"4/5/6/7 + Metro-North"},{stn:"Union Square",pct:74,dir:"4/5/6/N/Q/R/W/L"},{stn:"Atlantic Ave",pct:66,dir:"Brooklyn interchange hub"}],
     alerts:[{type:"warn",msg:"4 train running express — skipping 51st, 68th, 77th St"},{type:"info",msg:"OMNY contactless accepted on all buses and subways"},{type:"crowd",msg:"Times Square gridlock — use 42nd St Bryant Park as alternate"},{type:"info",msg:"L train weekend suspended Canarsie–Jefferson: Q shuttle active"}]},
   tokyo:{name:"Tokyo",country:"Japan",tz:"Asia/Tokyo",flag:"🇯🇵",currency:"¥",code:"TYO",accent:"#2C3E7A",accentB:"#7EC8E3",timezone:"JST",transitLabel:"Tokyo Metro / JR East",defaultFrom:"Shibuya",defaultTo:"Marunouchi",popularRoutes:[["Shibuya","Marunouchi"],["Shinjuku","Akihabara"],["Narita Airport","Shinjuku"],["Ikebukuro","Roppongi"]],
     coaches:[{l:"1号車",p:88,special:false},{l:"2号車",p:82,special:false},{l:"3号車",p:75,special:false},{l:"4号車 ♀",p:60,special:true,note:"Women only rush hours"},{l:"5号車",p:91,special:false},{l:"6号車",p:78,special:false},{l:"7号車",p:70,special:false},{l:"8号車",p:65,special:false},{l:"9号車",p:55,special:false},{l:"10号車",p:48,special:false},{l:"11号車",p:42,special:false}],
-    lines:[{line:"Ginza Line",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14,freqMins:3},{line:"Yamanote Line",route:"Loop (30 stations)",status:"On Time",trains:20,freqMins:2},{line:"Chuo Line",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16,freqMins:5}],
+    timetable:[{"id": "ginza", "name": "Ginza Line", "route": "Asakusa \u2194 Shibuya", "color": "#FF9500", "first": "05:01", "last": "00:22", "peakFreq": 2, "offPeakFreq": 4, "peakHours": [[7, 9], [17, 20]], "note": "Tokyo Metro published timetable"}, {"id": "marunouchi", "name": "Marunouchi Line", "route": "Ogikubo \u2194 Ikebukuro", "color": "#F62E36", "first": "05:02", "last": "00:26", "peakFreq": 2, "offPeakFreq": 4, "peakHours": [[7, 9], [17, 20]], "note": "Tokyo Metro published timetable"}, {"id": "yamanote", "name": "Yamanote Line", "route": "Loop (Tokyo \u2194 Shinjuku \u2194 Shibuya)", "color": "#9ACD32", "first": "04:27", "last": "01:04", "peakFreq": 2, "offPeakFreq": 4, "peakHours": [[7, 9], [17, 20]], "note": "JR East published timetable"}, {"id": "hibiya", "name": "Hibiya Line", "route": "Naka-meguro \u2194 Kita-senju", "color": "#9C5E31", "first": "05:10", "last": "00:30", "peakFreq": 3, "offPeakFreq": 5, "peakHours": [[7, 9], [17, 20]], "note": "Tokyo Metro published timetable"}],lines:[{line:"Ginza Line",route:"Asakusa ↔ Shibuya",status:"On Time",trains:14,freqMins:3},{line:"Yamanote Line",route:"Loop (30 stations)",status:"On Time",trains:20,freqMins:2},{line:"Chuo Line",route:"Shinjuku ↔ Tokyo Stn",status:"Delayed",trains:16,freqMins:5}],
     stations:[{stn:"Shinjuku",pct:96,dir:"World's busiest station"},{stn:"Shibuya",pct:88,dir:"Multiple lines + Scramble"},{stn:"Tokyo",pct:77,dir:"Shinkansen + Yamanote hub"},{stn:"Ikebukuro",pct:80,dir:"Yamanote + Fukutoshin"}],
     alerts:[{type:"warn",msg:"Chuo Line 4 min late — door malfunction at Koenji"},{type:"info",msg:"Suica/Pasmo IC card required — no cash on Tokyo Metro"},{type:"safe",msg:"Women-only carriages active 7–9 AM and 5–9 PM on all Metro"},{type:"crowd",msg:"Shinjuku South Exit — avoid 8:10–8:40 during peak surge"}]},
   sydney:{name:"Sydney",country:"Australia",tz:"Australia/Sydney",flag:"🇦🇺",currency:"A$",code:"SYD",accent:"#00843D",accentB:"#FFD700",timezone:"AEST",transitLabel:"Transport for NSW",defaultFrom:"Bondi Junction",defaultTo:"Wynyard (CBD)",popularRoutes:[["Bondi Junction","Wynyard (CBD)"],["Parramatta","Central"],["Chatswood","Circular Quay"],["Liverpool","Town Hall"]],
     coaches:[{l:"Car 1",p:79,special:false},{l:"Car 2",p:72,special:false},{l:"Car 3",p:88,special:false},{l:"Car 4",p:65,special:false},{l:"Car 5",p:58,special:false},{l:"Car 6",p:81,special:false},{l:"Car 7",p:70,special:false},{l:"Car 8",p:45,special:false}],
-    lines:[{line:"T1 North Shore",route:"Central ↔ Berowra / Richmond",status:"On Time",trains:10,freqMins:7},{line:"T4 Eastern Sub",route:"Bondi Jn ↔ Waterfall",status:"Delayed",trains:8,freqMins:9},{line:"L2/L3 Kingsford",route:"Circular Quay ↔ Randwick",status:"On Time",trains:6,freqMins:10}],
+    timetable:[{"id": "t1", "name": "T1 North Shore & Western", "route": "Richmond / Emu Plains \u2194 Wynyard", "color": "#F99D1C", "first": "04:49", "last": "01:00", "peakFreq": 5, "offPeakFreq": 15, "peakHours": [[7, 9], [16, 19]], "note": "Transport NSW published timetable"}, {"id": "t2", "name": "T2 Inner West & Leppington", "route": "Leppington \u2194 City Circle", "color": "#0098CD", "first": "05:00", "last": "00:30", "peakFreq": 5, "offPeakFreq": 15, "peakHours": [[7, 9], [16, 19]], "note": "Transport NSW published timetable"}, {"id": "t3", "name": "T3 Bankstown", "route": "Lidcombe/Bankstown \u2194 City Circle", "color": "#F47920", "first": "05:15", "last": "00:15", "peakFreq": 7, "offPeakFreq": 15, "peakHours": [[7, 9], [16, 19]], "note": "Transport NSW published timetable"}, {"id": "metro", "name": "Sydney Metro", "route": "Tallawong \u2194 Bankstown", "color": "#00857D", "first": "04:50", "last": "01:00", "peakFreq": 4, "offPeakFreq": 8, "peakHours": [[7, 9], [16, 19]], "note": "Sydney Metro official schedule"}],lines:[{line:"T1 North Shore",route:"Central ↔ Berowra / Richmond",status:"On Time",trains:10,freqMins:7},{line:"T4 Eastern Sub",route:"Bondi Jn ↔ Waterfall",status:"Delayed",trains:8,freqMins:9},{line:"L2/L3 Kingsford",route:"Circular Quay ↔ Randwick",status:"On Time",trains:6,freqMins:10}],
     stations:[{stn:"Central",pct:79,dir:"All lines + intercity"},{stn:"Town Hall",pct:72,dir:"T1/T2/T3/T4/T8"},{stn:"Wynyard",pct:65,dir:"T1/T2/T3 + Buses"},{stn:"Circular Quay",pct:58,dir:"Trains + Ferries + Light Rail"}],
     alerts:[{type:"warn",msg:"T4 Eastern Suburbs delays — track work Bondi Junction to Museum"},{type:"info",msg:"Opal card tap on/off required — daily cap A$16.80 weekdays"},{type:"safe",msg:"Transport officers at Central 7:30–9 AM for passenger safety"},{type:"info",msg:"Ferry F1 Manly — extra service Fri 5:30 PM from Circular Quay"}]},
 };
@@ -986,7 +986,357 @@ async function nominatimSearch(q,cityName){
   return d.map(x=>x.display_name.split(",").slice(0,3).join(", "));
 }
 
-// ─── NAVIGATE TAB ─────────────────────────────────────────────────────────────
+// ─── TfL REAL-TIME (London only — browser accessible, no backend needed) ──────
+const TFL_BASE = "https://api.tfl.gov.uk";
+
+// TfL line IDs mapped from our line names
+const TFL_LINE_IDS = {
+  "Elizabeth line":"elizabeth","Central line":"central","Jubilee line":"jubilee",
+  "Northern line":"northern","Victoria line":"victoria","Piccadilly line":"piccadilly",
+  "Bakerloo line":"bakerloo","District line":"district","Circle line":"circle",
+  "Hammersmith & City":"hammersmith-city","Metropolitan line":"metropolitan",
+  "Overground":"london-overground","DLR":"dlr","Waterloo & City":"waterloo-city",
+};
+
+async function tflLineStatus(tflKey) {
+  const keyParam = tflKey ? `?app_key=${tflKey}` : "";
+  const ctrl = new AbortController(); setTimeout(()=>ctrl.abort(), 8000);
+  const r = await fetch(`${TFL_BASE}/line/mode/tube,elizabeth-line,overground,dlr/status${keyParam}`,
+    {signal:ctrl.signal});
+  if (!r.ok) throw new Error(`TfL ${r.status}`);
+  return r.json();
+}
+
+async function tflArrivals(lineId, stationName, tflKey) {
+  // Search for the station's NaPTAN ID first
+  const keyParam = tflKey ? `&app_key=${tflKey}` : "";
+  const ctrl = new AbortController(); setTimeout(()=>ctrl.abort(), 8000);
+  // Use stop search
+  const sr = await fetch(`${TFL_BASE}/StopPoint/Search/${encodeURIComponent(stationName)}?modes=tube,elizabeth-line,overground,dlr${keyParam}`,
+    {signal:ctrl.signal});
+  if (!sr.ok) return [];
+  const sd = await sr.json();
+  const stop = sd.matches?.[0];
+  if (!stop) return [];
+
+  const ar = await fetch(`${TFL_BASE}/StopPoint/${stop.id}/Arrivals${keyParam.replace("&","?")}`,
+    {signal:ctrl.signal});
+  if (!ar.ok) return [];
+  const arrivals = await ar.json();
+  // Filter to requested line and sort by time
+  return arrivals
+    .filter(a => !lineId || a.lineId === lineId)
+    .sort((a,b) => a.timeToStation - b.timeToStation)
+    .slice(0,3);
+}
+
+// ─── LIVE INTEL COMPONENT ─────────────────────────────────────────────────────
+function LiveIntelTab({city, tflKey, fmtDepTime, cityTimeStr}) {
+  const isLondon = city.code === "LON";
+  const [tflStatus, setTflStatus]   = useState(null);
+  const [tflLoading, setTflLoading] = useState(false);
+  const [tflError, setTflError]     = useState("");
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  const statusCol = s => s==="Good Service"||s==="Normal"?C.emerald:s==="Minor Delays"||s==="Delayed"?"#F5A623":"#FF4466";
+  const uc = m => m<=2?"#FF4466":m<=5?"#F5A623":C.emerald;
+
+  async function loadTfl() {
+    setTflLoading(true); setTflError("");
+    try {
+      const data = await tflLineStatus(tflKey);
+      // Map to our display format
+      const lines = data.map(line => ({
+        id:    line.id,
+        name:  line.name,
+        status: line.lineStatuses?.[0]?.statusSeverityDescription || "Unknown",
+        reason: line.lineStatuses?.[0]?.reason || "",
+        disruptions: line.lineStatuses?.filter(s=>s.statusSeverityDescription!=="Good Service").length || 0,
+      }));
+      setTflStatus(lines);
+      setLastRefresh(new Date());
+    } catch(e) {
+      setTflError(e.message.includes("abort") ? "Request timed out" : e.message);
+    }
+    setTflLoading(false);
+  }
+
+  // Auto-load for London
+  useEffect(()=>{ if(isLondon) loadTfl(); },[city.code]);
+
+  if (isLondon) {
+    return (
+      <div>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:tflLoading?"#F5A623":C.emerald,display:"inline-block",animation:"pulse 1.5s infinite"}}/>
+            <span style={{fontSize:11,color:C.textDim}}>
+              {tflLoading?"Loading TfL data…":"TfL Live Status · "}<span style={{color:C.emerald,fontFamily:"'DM Mono',monospace"}}>{cityTimeStr}</span>
+            </span>
+          </div>
+          <button onClick={loadTfl} disabled={tflLoading}
+            style={{background:`${ACC}15`,border:`1px solid ${ACC}33`,borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:10,color:ACC,fontWeight:600}}>
+            {tflLoading?"…":"↻ Refresh"}
+          </button>
+        </div>
+
+        {/* Source badge */}
+        <div style={{background:"rgba(26,115,232,0.08)",border:"1px solid rgba(26,115,232,0.25)",borderRadius:9,padding:"7px 11px",marginBottom:12,display:"flex",gap:7,alignItems:"center"}}>
+          <span style={{fontSize:14}}>🗺️</span>
+          <div>
+            <div style={{fontSize:10,fontWeight:700,color:"#4285F4"}}>Real data from TfL Unified API</div>
+            <div style={{fontSize:9,color:C.muted}}>
+              {lastRefresh ? `Last updated: ${lastRefresh.toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:"Europe/London"})} London time` : "Loading…"}
+              {tflKey ? " · Authenticated" : " · Unauthenticated (rate limited to 50 req/hr)"}
+            </div>
+          </div>
+        </div>
+
+        {tflError&&(
+          <div style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:9,padding:"10px 12px",marginBottom:12,fontSize:11,color:C.crimson}}>
+            ⚠️ {tflError} — <span style={{textDecoration:"underline",cursor:"pointer"}} onClick={loadTfl}>Retry</span>
+          </div>
+        )}
+
+        {tflLoading&&!tflStatus&&(
+          <div style={{textAlign:"center",padding:"40px 0"}}>
+            <div style={{fontSize:32,marginBottom:10,animation:"spin 1s linear infinite"}}>🚇</div>
+            <div style={{fontSize:12,color:C.textDim}}>Fetching live TfL status…</div>
+          </div>
+        )}
+
+        {tflStatus&&(
+          <div>
+            {/* Summary bar */}
+            {(()=>{
+              const disrupted = tflStatus.filter(l=>l.status!=="Good Service");
+              const good      = tflStatus.filter(l=>l.status==="Good Service");
+              return(
+                <div style={{display:"flex",gap:8,marginBottom:14}}>
+                  <div style={{flex:1,background:"rgba(0,212,170,0.1)",border:"1px solid rgba(0,212,170,0.25)",borderRadius:10,padding:"9px 12px",textAlign:"center"}}>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:C.emerald}}>{good.length}</div>
+                    <div style={{fontSize:9,color:C.muted}}>Good Service</div>
+                  </div>
+                  <div style={{flex:1,background:disrupted.length>0?"rgba(255,68,102,0.1)":"rgba(0,212,170,0.05)",border:`1px solid ${disrupted.length>0?"rgba(255,68,102,0.3)":"rgba(0,212,170,0.15)"}`,borderRadius:10,padding:"9px 12px",textAlign:"center"}}>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:disrupted.length>0?C.crimson:C.emerald}}>{disrupted.length}</div>
+                    <div style={{fontSize:9,color:C.muted}}>Disruptions</div>
+                  </div>
+                  <div style={{flex:1,background:`${ACC}10`,border:`1px solid ${ACC}25`,borderRadius:10,padding:"9px 12px",textAlign:"center"}}>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:ACC}}>{tflStatus.length}</div>
+                    <div style={{fontSize:9,color:C.muted}}>Lines Total</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Disruptions first */}
+            {tflStatus.filter(l=>l.status!=="Good Service").length>0&&(
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:9,color:C.crimson,letterSpacing:"0.1em",fontWeight:700,marginBottom:8}}>⚠️ DISRUPTIONS</div>
+                {tflStatus.filter(l=>l.status!=="Good Service").map((l,i)=>(
+                  <div key={i} style={{background:C.surface,border:"1px solid rgba(255,68,102,0.3)",borderLeft:"3px solid #FF4466",borderRadius:11,padding:"11px 13px",marginBottom:8}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:l.reason?4:0}}>
+                      <div style={{fontWeight:700,fontSize:13}}>{l.name}</div>
+                      <div style={{fontSize:10,fontWeight:600,color:statusCol(l.status),display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:statusCol(l.status),display:"inline-block"}}/>
+                        {l.status}
+                      </div>
+                    </div>
+                    {l.reason&&<div style={{fontSize:10,color:C.textDim,lineHeight:1.5}}>{l.reason.slice(0,120)}{l.reason.length>120?"…":""}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Good service lines */}
+            <div>
+              <div style={{fontSize:9,color:C.emerald,letterSpacing:"0.1em",fontWeight:700,marginBottom:8}}>✓ GOOD SERVICE</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {tflStatus.filter(l=>l.status==="Good Service").map((l,i)=>(
+                  <div key={i} style={{background:"rgba(0,212,170,0.08)",border:"1px solid rgba(0,212,170,0.2)",borderRadius:8,padding:"5px 10px",display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{width:5,height:5,borderRadius:"50%",background:C.emerald,display:"inline-block"}}/>
+                    <span style={{fontSize:11,fontWeight:600,color:C.text}}>{l.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* TfL key prompt if not set */}
+            {!tflKey&&(
+              <div style={{marginTop:14,background:`${ACC}08`,border:`1px solid ${ACC}25`,borderRadius:9,padding:"9px 12px"}}>
+                <div style={{fontSize:10,color:C.textDim,lineHeight:1.6}}>
+                  💡 Add a free <strong style={{color:ACC}}>TfL API key</strong> at <span style={{color:ACC}}>api-portal.tfl.gov.uk</span> to increase rate limit from 50 to 500 requests/hour.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── NON-LONDON: Simulated with clear labelling ──
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+        <span style={{width:7,height:7,borderRadius:"50%",background:"#F5A623",display:"inline-block"}}/>
+        <span style={{fontSize:11,color:C.textDim}}>{city.transitLabel} · <span style={{color:C.emerald,fontFamily:"'DM Mono',monospace"}}>{cityTimeStr}</span></span>
+      </div>
+
+      {/* Simulated disclaimer */}
+      <div style={{background:"rgba(245,166,35,0.08)",border:"1px solid rgba(245,166,35,0.3)",borderRadius:10,padding:"10px 13px",marginBottom:14,display:"flex",gap:8}}>
+        <span style={{fontSize:16,flexShrink:0}}>⚠️</span>
+        <div style={{fontSize:10,color:"#F5A623",lineHeight:1.65}}>
+          <strong>Simulated data</strong> — {city.name}'s transit authority does not provide a public real-time API accessible from a browser.
+          {city.code==="HYD"&&" HMRL (Hyderabad Metro) has no open API."}
+          {city.code==="DEL"&&" DMRC (Delhi Metro) has no open developer API."}
+          {city.code==="BOM"&&" Mumbai Metro/BEST have no open browser-accessible API."}
+          {city.code==="DXB"&&" RTA Dubai has no public real-time API."}
+          {city.code==="TYO"&&" Tokyo Metro has no English public API accessible from browsers."}
+          {city.code==="SIN"&&" LTA Singapore requires a backend proxy (AccountKey, CORS blocked)."}
+          {city.code==="SYD"&&" Transport NSW requires an API key and backend proxy."}
+          {city.code==="NYC"&&" MTA feeds use binary Protobuf format, not parseable from a browser."}
+          {" Use the official app for live times."}
+        </div>
+      </div>
+
+      {/* Official app links */}
+      {(()=>{
+        const apps = {
+          HYD:[{name:"Hyderabad Metro (HMRL)",url:"https://www.ltmetro.com/",icon:"🚇"},{name:"TSRTC Bus Timings",url:"https://www.tsrtconline.in/",icon:"🚌"}],
+          DEL:[{name:"DMRC Metro App",url:"https://www.delhimetrorail.com/",icon:"🚇"},{name:"DTC Bus Info",url:"https://www.dtc.nic.in/",icon:"🚌"}],
+          BOM:[{name:"Mumbai Metro One",url:"https://www.mumbaimetro.com/",icon:"🚇"},{name:"BEST Undertaking",url:"https://www.bestundertaking.com/",icon:"🚌"}],
+          DXB:[{name:"RTA Dubai Metro",url:"https://www.rta.ae/wps/portal/rta/ae/public-transport",icon:"🚇"}],
+          TYO:[{name:"Tokyo Metro App",url:"https://www.tokyometro.jp/en/",icon:"🚇"},{name:"HyperDia",url:"https://www.hyperdia.com/",icon:"🚆"}],
+          SIN:[{name:"MyTransport Singapore",url:"https://www.mytransport.sg/",icon:"🚇"},{name:"SG Buses App",url:"https://www.transitlink.com.sg/",icon:"🚌"}],
+          SYD:[{name:"Transport NSW App",url:"https://transportnsw.info/",icon:"🚇"},{name:"Opal Travel",url:"https://www.opal.com.au/",icon:"💳"}],
+          NYC:[{name:"MTA Subway Time",url:"https://www.mta.info/",icon:"🚇"},{name:"NYC MTA App",url:"https://new.mta.info/",icon:"🚌"}],
+        };
+        const cityApps = apps[city.code]||[];
+        return cityApps.length>0&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:9,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>OFFICIAL APPS FOR LIVE TIMES</div>
+            {cityApps.map((app,i)=>(
+              <a key={i} href={app.url} target="_blank"
+                style={{display:"flex",alignItems:"center",gap:10,background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 13px",marginBottom:7,textDecoration:"none"}}>
+                <span style={{fontSize:20}}>{app.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:12,color:C.text}}>{app.name}</div>
+                  <div style={{fontSize:10,color:C.muted}}>Official live times</div>
+                </div>
+                <span style={{fontSize:11,color:ACC}}>Open →</span>
+              </a>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Real timetable — calculated from published official schedules */}
+      {(()=>{
+        const timetable=city.timetable||[];
+        if(!timetable.length) return null;
+        const now=new Date();
+        const cityNow=new Date(now.toLocaleString("en-US",{timeZone:city.tz||"Asia/Kolkata"}));
+        const nowMins=cityNow.getHours()*60+cityNow.getMinutes();
+        const isFriday=cityNow.getDay()===5;
+        function t2m(t){const [h,m]=t.split(":").map(Number);return h*60+m;}
+        function m2s(m){const h=Math.floor(m/60)%24,mn=m%60,ap=h>=12?"PM":"AM",hh=h%12||12;return hh+":"+(mn<10?"0":"")+mn+" "+ap;}
+        function getNextDeps(line){
+          const firstM=t2m(isFriday&&line.fridayFirst?line.fridayFirst:line.first);
+          const lastStr=isFriday&&line.fridayLast?line.fridayLast:line.last;
+          let lastM=t2m(lastStr);
+          if(lastM<firstM) lastM+=1440;
+          const isPeak=(line.peakHours||[]).some(([s,e])=>cityNow.getHours()>=s&&cityNow.getHours()<e);
+          const freq=isPeak?line.peakFreq:line.offPeakFreq;
+          if(nowMins>lastM) return {status:"ended",firstTomorrow:line.first,freq};
+          if(nowMins<firstM) return {status:"waiting",firstTime:line.first,minsToFirst:firstM-nowMins,freq};
+          const deps=[];
+          let dep=firstM;
+          while(dep<=lastM){if(dep>nowMins){deps.push(dep);if(deps.length>=3)break;}dep+=freq;}
+          return {status:"running",departures:deps,freq,isPeak,lastTime:lastStr};
+        }
+        return(
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+              <span style={{fontSize:10,fontWeight:700,color:C.text,letterSpacing:"0.08em"}}>🗓 SCHEDULED TIMETABLE</span>
+              <div style={{flex:1,height:1,background:C.border}}/>
+              <span style={{fontSize:9,color:C.muted}}>Official published schedules</span>
+            </div>
+            {timetable.map((line,i)=>{
+              const info=getNextDeps(line);
+              const lc=line.color||ACC;
+              return(
+                <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:11}}>
+                    <div style={{width:4,borderRadius:4,alignSelf:"stretch",background:lc,flexShrink:0,minHeight:36}}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:13,color:C.text}}>{line.name}</div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:1}}>{line.route}</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:9,color:C.muted}}>First · Last</div>
+                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:C.textDim,marginTop:1}}>{line.first} · {line.last}</div>
+                    </div>
+                  </div>
+                  {info.status==="ended"&&(
+                    <div style={{textAlign:"center",padding:"10px 0"}}>
+                      <div style={{fontSize:22,marginBottom:4}}>🌙</div>
+                      <div style={{fontSize:12,color:C.textDim}}>Service ended for today</div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:3}}>Resumes tomorrow at <strong style={{color:C.text}}>{info.firstTomorrow}</strong></div>
+                    </div>
+                  )}
+                  {info.status==="waiting"&&(
+                    <div style={{textAlign:"center",padding:"8px 0"}}>
+                      <div style={{fontSize:20,marginBottom:4}}>⏰</div>
+                      <div style={{fontSize:12,color:C.textDim}}>Service starts at <strong style={{color:C.text}}>{info.firstTime}</strong></div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:3}}>{info.minsToFirst} min until first train</div>
+                    </div>
+                  )}
+                  {info.status==="running"&&(
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:9}}>
+                        <div style={{fontSize:9,background:info.isPeak?"rgba(255,68,102,0.12)":"rgba(0,212,170,0.1)",
+                          color:info.isPeak?C.crimson:C.emerald,borderRadius:5,padding:"2px 7px",fontWeight:600}}>
+                          {info.isPeak?"🔴 PEAK":"🟢 OFF-PEAK"}
+                        </div>
+                        <span style={{fontSize:9,color:C.muted}}>Every <strong style={{color:C.text}}>{info.freq} min</strong></span>
+                        <div style={{flex:1}}/>
+                        <span style={{fontSize:9,color:C.muted}}>Last: <strong style={{color:C.text}}>{info.lastTime}</strong></span>
+                      </div>
+                      <div style={{display:"flex",gap:7}}>
+                        {info.departures.map((dep,j)=>{
+                          const ma=dep-nowMins;
+                          const uc=ma<=2?"#FF4466":ma<=5?"#F5A623":C.emerald;
+                          return(
+                            <div key={j} style={{flex:1,background:j===0?`${uc}15`:"rgba(255,255,255,0.03)",
+                              border:`1.5px solid ${j===0?uc+"66":C.border}`,borderRadius:10,padding:"10px 6px",textAlign:"center"}}>
+                              <div style={{fontSize:9,color:C.muted,marginBottom:4}}>{j===0?"NEXT":j===1?"THEN":"AFTER"}</div>
+                              <div style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:j===0?uc:C.text}}>{m2s(dep)}</div>
+                              <div style={{fontSize:10,marginTop:3,fontWeight:600,color:j===0?uc:C.muted}}>
+                                {ma<=1?"Now":ma<60?`${ma}m`:`${Math.floor(ma/60)}h ${ma%60}m`}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{fontSize:8,color:C.muted,marginTop:9,paddingTop:8,borderTop:`1px solid ${C.border}`,display:"flex",gap:4}}>
+                    <span style={{color:"#F5A623"}}>📋</span>
+                    <span>{line.note} · Scheduled times · Not real-time</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+
 function NavigateTab({city}){
   const [phase,setPhase]=useState("idle");
   const [stations,setStations]=useState([]);
@@ -1098,9 +1448,11 @@ function TranzitApp(){
   // Keys
   const [anthropicKey,setAnthropicKey]=useState(()=>localStorage.getItem(ANTHROPIC_KEY_STORE)||"");
   const [gmapsKey,setGmapsKey]=useState(()=>localStorage.getItem(GMAPS_KEY_STORE)||"");
+  const [tflKey,setTflKey]=useState(()=>localStorage.getItem("tranzit_tfl_key")||"");
   const [showKeys,setShowKeys]=useState(false);
   const [keyAI,setKeyAI]=useState("");
   const [keyGM,setKeyGM]=useState("");
+  const [keyTFL,setKeyTFL]=useState("");
   const [keyErr,setKeyErr]=useState("");
 
   // Route AI
@@ -1209,17 +1561,19 @@ function TranzitApp(){
 
   // Save keys
   function saveKeys(){
-    const ai=keyAI.trim(), gm=keyGM.trim();
+    const ai=keyAI.trim(), gm=keyGM.trim(), tfl=keyTFL.trim();
     if(ai&&!ai.startsWith("sk-ant-")){setKeyErr("Anthropic key must start with sk-ant-");return;}
     if(gm&&gm.length<20){setKeyErr("Google Maps key looks too short");return;}
     if(ai){localStorage.setItem(ANTHROPIC_KEY_STORE,ai);setAnthropicKey(ai);}
     if(gm){localStorage.setItem(GMAPS_KEY_STORE,gm);setGmapsKey(gm);_gmapsReady=false;_gmapsPromise=null;}
-    setShowKeys(false);setKeyAI("");setKeyGM("");setKeyErr("");
+    if(tfl){localStorage.setItem("tranzit_tfl_key",tfl);setTflKey(tfl);}
+    setShowKeys(false);setKeyAI("");setKeyGM("");setKeyTFL("");setKeyErr("");
   }
 
   function clearKey(type){
     if(type==='ai'){localStorage.removeItem(ANTHROPIC_KEY_STORE);setAnthropicKey("");}
-    else{localStorage.removeItem(GMAPS_KEY_STORE);setGmapsKey("");_gmapsReady=false;_gmapsPromise=null;}
+    else if(type==='gm'){localStorage.removeItem(GMAPS_KEY_STORE);setGmapsKey("");_gmapsReady=false;_gmapsPromise=null;}
+    else if(type==='tfl'){localStorage.removeItem("tranzit_tfl_key");setTflKey("");}
   }
 
   // SOS
@@ -1302,6 +1656,25 @@ function TranzitApp(){
           </div>
 
           {keyErr&&<div style={{fontSize:11,color:C.crimson,marginBottom:8}}>{keyErr}</div>}
+
+          {/* TfL Key — only show for London */}
+          {city.code==="LON"&&(
+            <div style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div>
+                  <span style={{fontSize:12,fontWeight:700,color:C.text}}>🚇 TfL API Key</span>
+                  <span style={{fontSize:10,color:C.textDim,marginLeft:8}}>London only — optional</span>
+                </div>
+                {tflKey&&<button onClick={()=>clearKey('tfl')} style={{background:"rgba(255,68,102,0.1)",border:"1px solid rgba(255,68,102,0.3)",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontSize:10,color:C.crimson}}>Remove</button>}
+              </div>
+              {tflKey
+                ? <div style={{fontSize:11,color:C.emerald,padding:"7px 10px",background:"rgba(0,212,170,0.08)",borderRadius:7}}>✓ Connected · {tflKey.slice(0,12)}…</div>
+                : <input value={keyTFL} onChange={e=>setKeyTFL(e.target.value)} placeholder="TfL app_key..."
+                    style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+              }
+              <div style={{fontSize:9,color:C.muted,marginTop:4}}>Free at <span style={{color:ACC}}>api-portal.tfl.gov.uk</span> — raises limit from 50 to 500 req/hr · Without key also works</div>
+            </div>
+          )}
 
           <div style={{background:`${ACC}10`,border:`1px solid ${ACC}25`,borderRadius:8,padding:"8px 10px",marginBottom:12}}>
             <div style={{fontSize:10,color:C.textDim,lineHeight:1.6}}>
@@ -1452,21 +1825,75 @@ function TranzitApp(){
 
               {/* FROM */}
               <div style={{marginBottom:10,position:"relative"}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.emerald}}>●</span>&nbsp;FROM</div>
-                <div style={{display:"flex",gap:7}}>
-                  <input value={from}
-                    onChange={e=>{setFrom(e.target.value);setFromCoords(null);triggerAC(e.target.value,"from");setRoutes([]);setSearched(false);}}
-                    onFocus={()=>setFromFocus(true)} onBlur={()=>setTimeout(()=>setFromFocus(false),200)}
-                    placeholder={`e.g. ${city.defaultFrom||"Your area"}, any address`}
-                    style={{flex:1,background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-                  <button onClick={useGPS} disabled={gpsLoad}
-                    style={{flexShrink:0,background:fromCoords?`${C.emerald}20`:`${ACC}15`,border:`1px solid ${fromCoords?C.emerald:ACC+"44"}`,borderRadius:9,padding:"0 12px",cursor:"pointer",fontSize:18,color:fromCoords?C.emerald:ACC}}>
-                    {gpsLoad?"⏳":"📍"}
-                  </button>
+                {/* Label row */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",fontWeight:700}}>
+                    <span style={{color:C.emerald}}>●</span>&nbsp;FROM — WHERE ARE YOU NOW?
+                  </div>
                 </div>
-                {fromCoords&&<div style={{fontSize:9,color:C.emerald,marginTop:3}}>📍 Using GPS coordinates: {fromCoords.lat}, {fromCoords.lng}</div>}
+
+                {/* Two clear options: GPS button | OR | Text input */}
+                {!from ? (
+                  <div>
+                    {/* Option 1 — GPS button (prominent) */}
+                    <button onClick={useGPS} disabled={gpsLoad}
+                      style={{width:"100%",background:gpsLoad?`${ACC}20`:`linear-gradient(135deg,${C.emerald}22,${C.emerald}10)`,
+                        border:`2px solid ${C.emerald}66`,borderRadius:10,padding:"12px 14px",cursor:"pointer",
+                        display:"flex",alignItems:"center",gap:10,marginBottom:9,
+                        textAlign:"left",transition:"all 0.2s"}}>
+                      <div style={{width:36,height:36,borderRadius:9,background:gpsLoad?`${ACC}30`:`${C.emerald}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                        {gpsLoad?"⏳":"📍"}
+                      </div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.emerald}}>
+                          {gpsLoad?"Getting your location…":"Use My Current Location"}
+                        </div>
+                        <div style={{fontSize:10,color:C.textDim,marginTop:1}}>
+                          {gpsLoad?"Please wait…":"Tap to detect via GPS — most accurate"}
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Divider */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
+                      <div style={{flex:1,height:1,background:C.border}}/>
+                      <span style={{fontSize:10,color:C.muted,fontWeight:600}}>OR TYPE AN ADDRESS</span>
+                      <div style={{flex:1,height:1,background:C.border}}/>
+                    </div>
+
+                    {/* Option 2 — text input */}
+                    <input
+                      value={from}
+                      onChange={e=>{setFrom(e.target.value);setFromCoords(null);triggerAC(e.target.value,"from");setRoutes([]);setSearched(false);}}
+                      onFocus={()=>setFromFocus(true)}
+                      onBlur={()=>setTimeout(()=>setFromFocus(false),200)}
+                      placeholder={`Type area, landmark or address in ${city.name}…`}
+                      style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}44`,borderRadius:9,
+                        padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                ) : (
+                  /* Filled state — show value with clear + edit options */
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(0,0,0,0.3)",border:`1.5px solid ${fromCoords?C.emerald:ACC+"55"}`,borderRadius:10,padding:"10px 12px"}}>
+                      <span style={{fontSize:16,flexShrink:0}}>{fromCoords?"📍":"✏️"}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,color:C.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{from.replace(/^📍\s*/,"")}</div>
+                        <div style={{fontSize:9,color:fromCoords?C.emerald:C.muted,marginTop:1}}>
+                          {fromCoords?`📍 GPS: ${fromCoords.lat}, ${fromCoords.lng}`:"Typed address"}
+                        </div>
+                      </div>
+                      <button onClick={()=>{setFrom("");setFromCoords(null);setFromSug([]);setRoutes([]);setSearched(false);}}
+                        style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 8px",cursor:"pointer",fontSize:11,color:C.muted,flexShrink:0}}>
+                        ✕ Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Autocomplete dropdown */}
                 {fromFocus&&fromSug.length>0&&(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,background:"#1A1A28",border:`1px solid ${ACC}44`,borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
+                    <div style={{padding:"7px 12px 5px",fontSize:9,color:C.muted,letterSpacing:"0.08em",borderBottom:`1px solid ${C.border}`}}>SUGGESTIONS</div>
                     {fromSug.map((s,i)=>(
                       <div key={i} onMouseDown={()=>{setFrom(s);setFromSug([]);setFromCoords(null);setRoutes([]);setSearched(false);}}
                         style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:i<fromSug.length-1?`1px solid ${C.border}`:"none",display:"flex",gap:8,alignItems:"center"}}>
@@ -1480,20 +1907,25 @@ function TranzitApp(){
               {/* SWAP */}
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                 <div style={{flex:1,height:1,background:C.border}}/>
-                <button onClick={()=>{const t=from;setFrom(to);setTo(t);setFromCoords(null);setRoutes([]);setSearched(false);}} style={{background:`${ACC}20`,border:`1px solid ${ACC}50`,borderRadius:"50%",width:30,height:30,cursor:"pointer",color:ACC,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⇄</button>
+                <button onClick={()=>{const t=from;setFrom(to);setTo(t);setFromCoords(null);setRoutes([]);setSearched(false);}}
+                  style={{background:`${ACC}20`,border:`1px solid ${ACC}50`,borderRadius:"50%",width:30,height:30,cursor:"pointer",color:ACC,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⇄</button>
                 <div style={{flex:1,height:1,background:C.border}}/>
               </div>
 
               {/* TO */}
               <div style={{position:"relative"}}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:5}}><span style={{color:C.crimson}}>●</span>&nbsp;TO</div>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:"0.12em",marginBottom:7,fontWeight:700}}>
+                  <span style={{color:C.crimson}}>●</span>&nbsp;TO — WHERE ARE YOU GOING?
+                </div>
                 <input value={to}
                   onChange={e=>{setTo(e.target.value);triggerAC(e.target.value,"to");setRoutes([]);setSearched(false);}}
-                  onFocus={()=>setToFocus(true)} onBlur={()=>setTimeout(()=>setToFocus(false),200)}
-                  placeholder={`e.g. ${city.defaultTo||"Destination"}, any address`}
-                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  onFocus={()=>setToFocus(true)}
+                  onBlur={()=>setTimeout(()=>setToFocus(false),200)}
+                  placeholder={`Type destination — any address, landmark, station…`}
+                  style={{width:"100%",background:"rgba(0,0,0,0.3)",border:`1px solid ${ACC}55`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
                 {toFocus&&toSug.length>0&&(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,background:"#1A1A28",border:`1px solid ${ACC}44`,borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
+                    <div style={{padding:"7px 12px 5px",fontSize:9,color:C.muted,letterSpacing:"0.08em",borderBottom:`1px solid ${C.border}`}}>SUGGESTIONS</div>
                     {toSug.map((s,i)=>(
                       <div key={i} onMouseDown={()=>{setTo(s);setToSug([]);setRoutes([]);setSearched(false);}}
                         style={{padding:"10px 13px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:i<toSug.length-1?`1px solid ${C.border}`:"none",display:"flex",gap:8,alignItems:"center"}}>
@@ -1711,46 +2143,7 @@ function TranzitApp(){
 
         {/* LIVE INTEL */}
         {tab==="live"&&(
-          <div>
-            <div style={{fontSize:11,color:C.textDim,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:C.emerald,display:"inline-block",animation:"pulse 1.5s infinite"}}/>
-              Live feed · {city.transitLabel} · <span style={{color:C.emerald,fontFamily:"'DM Mono',monospace"}}>{cityTimeStr}</span>
-            </div>
-            <div style={{background:"rgba(245,166,35,0.08)",border:"1px solid rgba(245,166,35,0.2)",borderRadius:9,padding:"8px 11px",marginBottom:12,fontSize:10,color:"#F5A623",lineHeight:1.5}}>
-              ⚠️ Departure times are simulated for demonstration. For live schedules connect HMRL/TfL/MTA official APIs.
-            </div>
-            {(city.lines||[]).map((l,i)=>{
-              const freq=l.freqMins||5;
-              const delay=l.status==="Delayed"?Math.floor(Math.random()*5)+3:0;
-              const t1=freq+delay, t2=freq*2+delay, t3=freq*3;
-              const uc=m=>m<=2?"#FF4466":m<=5?"#F5A623":C.emerald;
-              return(
-                <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:14,marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div><div style={{fontWeight:700,fontSize:13}}>{l.line}</div><div style={{fontSize:10,color:C.muted}}>{l.route}</div></div>
-                    <div style={{fontSize:10,fontWeight:600,color:statusCol(l.status),display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{width:6,height:6,borderRadius:"50%",background:statusCol(l.status),display:"inline-block"}}/>{l.status}{delay>0?` +${delay}m`:""}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:7}}>
-                    {[{label:"Next",m:t1},{label:"Then",m:t2},{label:"After",m:t3}].map((t,j)=>(
-                      <div key={j} style={{flex:1,background:j===0?`${uc(t.m)}12`:"rgba(255,255,255,0.03)",border:`1px solid ${j===0?uc(t.m)+"44":C.border}`,borderRadius:10,padding:"9px 6px",textAlign:"center"}}>
-                        <div style={{fontSize:9,color:C.muted,marginBottom:4}}>{t.label}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:j===0?uc(t.m):C.textDim}}>{fmtDepTime(t.m)}</div>
-                        <div style={{fontSize:10,marginTop:2,color:j===0?uc(t.m):C.muted}}>{t.m}m</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{fontSize:9,color:C.muted,marginTop:8}}>Every {freq} min · {l.trains} services</div>
-                </div>
-              );
-            })}
-            {(city.alerts||[]).map((a,i)=>(
-              <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${a.type==="warn"?ACCB:a.type==="safe"?C.emerald:C.crimson}`,borderRadius:11,padding:"11px 13px",marginBottom:9}}>
-                <div style={{fontSize:12,lineHeight:1.55}}>{a.type==="warn"?"⚠️":a.type==="safe"?"✅":"🚨"} {a.msg}</div>
-              </div>
-            ))}
-          </div>
+          <LiveIntelTab city={city} tflKey={tflKey} fmtDepTime={fmtDepTime} cityTimeStr={cityTimeStr}/>
         )}
 
         {/* CROWD */}
