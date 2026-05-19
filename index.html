@@ -663,46 +663,54 @@ async function fetchRoutes(city,from,to,apiKey,onInfo){
   const key=`${city.code}|${from.replace(/^📍\s*/,"").trim()}|${to}`.toLowerCase().slice(0,120);
   if(ROUTE_CACHE[key]){
     const age=Math.round((Date.now()-ROUTE_CACHE[key].ts)/60000);
-    onInfo({cached:true,age:age<2?"just now":`${age}m ago`});
+    onInfo({cached:true,age:age<2?"just now":`${age}m ago`,tokens:0,savedTokens:ROUTE_CACHE[key].tokens||800});
     return ROUTE_CACHE[key].routes;
   }
   const cleanFrom=from.replace(/^📍\s*/,"").trim();
-  const prompt=`You are a transit expert for ${city.name}, ${city.country}. Currency: ${city.currency}.
 
-Generate 6 distinct route OPTIONS from "${cleanFrom}" to "${to}". These are AI estimates for planning only.
+  const prompt=`You are a precise transit expert for ${city.name}, ${city.country}. Currency: ${city.currency}.
 
-Include ALL applicable modes:
-1. Metro/subway — walk to ACTUAL nearest station (NOT "${cleanFrom}") → metro → walk
-2. Metro + auto/cab feeder to nearest station → metro → walk  
-3. Direct bus — name the ACTUAL nearest bus stand and list ALL bus numbers that serve this corridor (e.g. 5K, 216K, 219K)
-4. Auto-rickshaw direct
-5. Cab/taxi direct
-6. Walk or cycle (only if realistically under 4km)
+A traveller is at: "${cleanFrom}"
+They want to reach: "${to}"
 
-STRICT RULES:
-- NEVER use "${cleanFrom}" as a transit stop name. Always name the actual real nearest stop.
-- "via" field: write real step-by-step e.g. "Walk 800m to Jubilee Hills Check Post Metro → Red Line towards Miyapur → Alight Ameerpet → Walk 400m"
-- Use REAL station names, real bus numbers, real landmarks that exist in ${city.name}.
-- Time and fare should be realistic estimates for ${city.name} traffic conditions.
-- Add a note in "tip" that times are estimates and can vary.
+Generate exactly 6 route options covering ALL available transport modes. For each route provide highly specific, followable directions.
 
-Return ONLY a raw JSON array, no markdown, no explanation:
-[{"id":"1","icon":"🚇","label":"Metro Walk","via":"step by step real route","time":25,"fare":35,"crowd":60,"reliability":90,"delay":0,"co2":0.8,"tip":"AI estimate. Verify timing on HMRL app or Google Maps before travelling."}]`;
+MODES TO COVER:
+1. 🚇 Metro (walk to station) — identify the CLOSEST real metro station to "${cleanFrom}" by name and distance, give exact metro line, direction, and alighting station closest to "${to}"
+2. 🚇 Metro (ride feeder) — auto/cab to a metro station (could be different from above if faster), then metro
+3. 🚌 Bus direct — identify the REAL nearest bus stop to "${cleanFrom}" by name, list ALL bus route numbers that actually run between these areas (check real ${city.name} bus routes), nearest stop to "${to}"
+4. 🛺 Auto-rickshaw direct — realistic meter fare for ${city.name}, typical travel time with traffic
+5. 🚗 Cab/taxi — realistic app cab fare (Ola/Uber) for this distance in ${city.name}
+6. 🚶 Walk or 🚲 Cycle — only include if the straight-line distance is realistically under 3.5km
+
+CRITICAL ACCURACY RULES:
+- NEVER invent station or stop names. Only use stations that ACTUALLY EXIST in ${city.name}.
+- NEVER name "${cleanFrom}" itself as a transit stop.
+- The "via" string is what the user will READ AND FOLLOW on the street. Write it like turn-by-turn:
+  "Walk 600m south to [Real Station Name] → Board [Line Name] towards [Terminal] → 4 stops → Alight [Station] → Walk 350m east to destination"
+- Include approximate walking distances (in meters) and directions (north/south/towards landmark).
+- Bus routes: list actual route numbers like "216D, 219K, 5K" not generic descriptions.
+- Fares must be realistic for ${city.name} (not London fares for Hyderabad, etc).
+- If a mode is not available or practical, replace it with a meaningful alternative (e.g. shared auto, metro feeder bus, e-rickshaw).
+
+Return ONLY a raw JSON array. No markdown, no explanation, no extra text:
+[{"id":"1","icon":"🚇","label":"Metro (Walk)","via":"Walk 600m to [Station] → [Line] towards [Terminal] → Alight [Station] → Walk 350m","time":28,"fare":40,"crowd":65,"reliability":92,"delay":0,"co2":0.9,"tip":"Check HMRL/DMRC/TfL app for live platform. Times are AI estimates — verify before travel."}]`;
 
   const resp=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
     headers:{"Content-Type":"application/json","x-api-key":apiKey,
       "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-    body:JSON.stringify({model:MODEL_ID,max_tokens:1400,messages:[{role:"user",content:prompt}]})
+    body:JSON.stringify({model:MODEL_ID,max_tokens:1800,messages:[{role:"user",content:prompt}]})
   });
   if(resp.status===401||resp.status===403) throw new Error("AUTH_FAILED");
   if(!resp.ok) throw new Error(`API ${resp.status}`);
   const data=await resp.json();
   const txt=data.content.map(x=>x.text||"").join("").replace(/```json|```/g,"").trim();
   const routes=JSON.parse(txt);
-  ROUTE_CACHE[key]={routes,ts:Date.now()};
+  const usedTokens=(data.usage?.input_tokens||0)+(data.usage?.output_tokens||0);
+  ROUTE_CACHE[key]={routes,ts:Date.now(),tokens:usedTokens};
   try{localStorage.setItem(ROUTE_CACHE_KEY,JSON.stringify(ROUTE_CACHE));}catch{}
-  onInfo({cached:false});
+  onInfo({cached:false,tokens:usedTokens,savedTokens:0});
   return routes;
 }
 
@@ -840,6 +848,8 @@ function TranzitApp(){
   const [searched,setSearched]=useState(false);
   const [sel,setSel]=useState(-1);
   const [cacheInfo,setCacheInfo]=useState(null);
+  const [sessionTokens,setSessionTokens]=useState(0);
+  const [savedTokens,setSavedTokens]=useState(0);
   const acRef=useRef(null);
 
   // API key
@@ -906,7 +916,11 @@ function TranzitApp(){
     if(!from.trim()||!to.trim()){setAiErr("Enter both From and To.");return;}
     setLoading(true);setAiErr("");setRoutes([]);setSearched(false);setSel(-1);
     try{
-      const r=await fetchRoutes(city,from,to,apiKey,info=>setCacheInfo(info));
+      const r=await fetchRoutes(city,from,to,apiKey,info=>{
+        setCacheInfo(info);
+        if(info.tokens>0) setSessionTokens(t=>t+info.tokens);
+        if(info.savedTokens>0) setSavedTokens(t=>t+info.savedTokens);
+      });
       setRoutes(r||[]);setSearched(true);
     }catch(e){
       if(e.message==="AUTH_FAILED"){
@@ -1532,13 +1546,39 @@ function TranzitApp(){
       <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:100,
         background:"rgba(10,10,15,0.97)",backdropFilter:"blur(16px)",
         borderTop:`1px solid ${C.border}`}}>
-        <div style={{padding:"6px 14px 4px",display:"flex",alignItems:"center",gap:6,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-          <span style={{fontSize:9,color:C.muted}}>🤖 {MODEL_ID}</span>
-          <div style={{flex:1}}/>
+        <div style={{padding:"5px 14px 4px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+          {/* Session tokens */}
+          <div style={{display:"flex",alignItems:"center",gap:5}}>
+            <span style={{fontSize:9,color:C.muted}}>⚡</span>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:700,color:ACC,lineHeight:1}}>{sessionTokens.toLocaleString()}</div>
+              <div style={{fontSize:7,color:C.muted,letterSpacing:"0.06em"}}>TOKENS</div>
+            </div>
+          </div>
+          <div style={{width:1,height:20,background:C.border}}/>
+          {/* Saved by cache */}
+          <div style={{display:"flex",alignItems:"center",gap:5}}>
+            <span style={{fontSize:9,color:C.emerald}}>🎯</span>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:700,color:C.emerald,lineHeight:1}}>{savedTokens>0?"+":""}{savedTokens.toLocaleString()}</div>
+              <div style={{fontSize:7,color:C.muted,letterSpacing:"0.06em"}}>SAVED</div>
+            </div>
+          </div>
+          <div style={{width:1,height:20,background:C.border}}/>
+          {/* Model */}
+          <div style={{display:"flex",alignItems:"center",gap:4,flex:1}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:C.emerald,flexShrink:0,animation:"pulse 2s infinite"}}/>
+            <span style={{fontSize:9,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🤖 {MODEL_ID}</span>
+          </div>
+          {/* Clear cache */}
           {Object.keys(ROUTE_CACHE).length>0&&(
-            <button onClick={()=>{Object.keys(ROUTE_CACHE).forEach(k=>delete ROUTE_CACHE[k]);localStorage.removeItem(ROUTE_CACHE_KEY);}}
-              style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",color:C.muted,fontSize:9}}>
-              🗑 Clear Cache
+            <button onClick={()=>{
+              Object.keys(ROUTE_CACHE).forEach(k=>delete ROUTE_CACHE[k]);
+              localStorage.removeItem(ROUTE_CACHE_KEY);
+              setSavedTokens(0);
+            }}
+              style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",color:C.muted,fontSize:9,flexShrink:0}}>
+              🗑 Cache
             </button>
           )}
         </div>
